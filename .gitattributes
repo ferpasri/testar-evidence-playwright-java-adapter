@@ -1,0 +1,5 @@
+* text=auto
+*.java text eol=crlf
+*.js text eol=crlf
+*.md text eol=crlf
+*.xml text eol=crlf
