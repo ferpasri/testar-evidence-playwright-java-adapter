@@ -1,4 +1,4 @@
-package org.testar.statemodel.playwright;
+package org.testar.evidence.playwright;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -22,18 +22,18 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.testar.statemodel.evidence.CandidateScope;
-import org.testar.statemodel.evidence.CheckReading;
-import org.testar.statemodel.evidence.CheckRule;
-import org.testar.statemodel.evidence.CheckStatus;
-import org.testar.statemodel.evidence.CheckTarget;
-import org.testar.statemodel.evidence.EvidenceReader;
-import org.testar.statemodel.evidence.ExecutionStatus;
-import org.testar.statemodel.evidence.ExpectedValue;
-import org.testar.statemodel.evidence.Observation;
-import org.testar.statemodel.evidence.StateModel;
-import org.testar.statemodel.evidence.Widget;
-import org.testar.statemodel.playwright.examples.ParabankDeniedLoan;
+import org.testar.evidence.CandidateScope;
+import org.testar.evidence.CheckReading;
+import org.testar.evidence.CheckRule;
+import org.testar.evidence.CheckStatus;
+import org.testar.evidence.CheckTarget;
+import org.testar.evidence.EvidenceReader;
+import org.testar.evidence.ExecutionStatus;
+import org.testar.evidence.ExpectedValue;
+import org.testar.evidence.Observation;
+import org.testar.evidence.StateModel;
+import org.testar.evidence.Widget;
+import org.testar.evidence.playwright.examples.ParabankDeniedLoan;
 
 class PlaywrightEvidenceIT {
     private static Playwright playwright;

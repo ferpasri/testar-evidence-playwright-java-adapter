@@ -1,4 +1,4 @@
-package org.testar.statemodel.playwright;
+package org.testar.evidence.playwright;
 
 import java.util.HashSet;
 import java.util.List;

@@ -1,12 +1,12 @@
-# Playwright Java state-model adapter
+# Playwright Java evidence adapter
 
-A Java library that records scripted Playwright executions in the shared [TESTAR state-model evidence format](https://github.com/ferpasri/testar-state-model-specs).
+A Java library that records scripted Playwright executions in the shared [TESTAR evidence format](https://github.com/ferpasri/testar-evidence-specs).
 
 ```text
-Java test script -> Playwright Java adapter -> testar-state-model-java -> portable evidence
+Java test script -> Playwright Java adapter -> testar-evidence-java -> portable evidence
 ```
 
-The adapter imports `org.testar:testar-state-model:0.2.1` through Maven. Its public API is in `org.testar.statemodel.playwright`. Release `0.2.1` belongs to the shared `0.2` release series.
+The adapter imports `org.testar:testar-evidence:0.2.1` through Maven. Its public API is in `org.testar.evidence.playwright`. Release `0.2.1` belongs to the shared `0.2` release series.
 
 ## Build and test
 
@@ -33,22 +33,22 @@ The browser tests use a controlled local website. They verify the scripted loan 
 
 ## Loan-denial example
 
-[ParabankDeniedLoan.java](src/test/java/org/testar/statemodel/playwright/examples/ParabankDeniedLoan.java) shows the integration calls and contains the example's `main` method. It logs in as `john` / `demo`, checks Account Services, opens Request Loan, checks Apply for a Loan, enters amount `999999` and down payment `1`, submits, and checks Denied.
+[ParabankDeniedLoan.java](src/test/java/org/testar/evidence/playwright/examples/ParabankDeniedLoan.java) shows the integration calls and contains the example's `main` method. It logs in as `john` / `demo`, checks Account Services, opens Request Loan, checks Apply for a Loan, enters amount `999999` and down payment `1`, submits, and checks Denied.
 
 ```powershell
-mvn test-compile exec:java "-Dexec.mainClass=org.testar.statemodel.playwright.examples.ParabankDeniedLoan" "-Dexec.classpathScope=test"
+mvn test-compile exec:java "-Dexec.mainClass=org.testar.evidence.playwright.examples.ParabankDeniedLoan" "-Dexec.classpathScope=test"
 ```
 
 With installed Google Chrome:
 
 ```powershell
-mvn test-compile exec:java "-Dexec.mainClass=org.testar.statemodel.playwright.examples.ParabankDeniedLoan" "-Dexec.classpathScope=test" "-Dplaywright.channel=chrome"
+mvn test-compile exec:java "-Dexec.mainClass=org.testar.evidence.playwright.examples.ParabankDeniedLoan" "-Dexec.classpathScope=test" "-Dplaywright.channel=chrome"
 ```
 
 The example runs headlessly. Add `"-Dplaywright.headed=true"` to show the browser. Its optional arguments are the starting URL and output directory:
 
 ```powershell
-mvn test-compile exec:java "-Dexec.mainClass=org.testar.statemodel.playwright.examples.ParabankDeniedLoan" "-Dexec.classpathScope=test" "-Dexec.args=https://para.testar.org/parabank/index.htm target/my-loan-evidence"
+mvn test-compile exec:java "-Dexec.mainClass=org.testar.evidence.playwright.examples.ParabankDeniedLoan" "-Dexec.classpathScope=test" "-Dexec.args=https://para.testar.org/parabank/index.htm target/my-loan-evidence"
 ```
 
 Each default run creates a fresh `target/parabank-denied-loan-<unique-id>/` directory. A supplied output directory must contain no existing model. The printed path contains `manifest.json`, `evidence.jsonl`, and PNG files in `artifacts/`; load that whole directory in the dashboard.
@@ -62,7 +62,7 @@ Install this adapter with `mvn install`, then declare:
 ```xml
 <dependency>
     <groupId>org.testar</groupId>
-    <artifactId>testar-state-model-playwright-java-adapter</artifactId>
+    <artifactId>testar-evidence-playwright-java-adapter</artifactId>
     <version>0.2.1</version>
 </dependency>
 ```

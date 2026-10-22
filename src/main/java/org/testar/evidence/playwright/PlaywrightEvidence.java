@@ -1,4 +1,4 @@
-package org.testar.statemodel.playwright;
+package org.testar.evidence.playwright;
 
 import com.microsoft.playwright.Locator;
 import com.microsoft.playwright.Page;
@@ -10,27 +10,27 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
-import org.testar.statemodel.evidence.ActionCandidate;
-import org.testar.statemodel.evidence.ActionDefinition;
-import org.testar.statemodel.evidence.ArtifactReference;
-import org.testar.statemodel.evidence.CandidateScope;
-import org.testar.statemodel.evidence.CaptureScope;
-import org.testar.statemodel.evidence.CheckReading;
-import org.testar.statemodel.evidence.CheckResult;
-import org.testar.statemodel.evidence.CheckRule;
-import org.testar.statemodel.evidence.CheckStatus;
-import org.testar.statemodel.evidence.CheckTarget;
-import org.testar.statemodel.evidence.ConcreteState;
-import org.testar.statemodel.evidence.Event;
-import org.testar.statemodel.evidence.EventEnvelope;
-import org.testar.statemodel.evidence.Execution;
-import org.testar.statemodel.evidence.ExpectedValue;
-import org.testar.statemodel.evidence.JsonlStore;
-import org.testar.statemodel.evidence.Manifest;
-import org.testar.statemodel.evidence.Observation;
-import org.testar.statemodel.evidence.Properties;
-import org.testar.statemodel.evidence.Run;
-import org.testar.statemodel.evidence.Widget;
+import org.testar.evidence.ActionCandidate;
+import org.testar.evidence.ActionDefinition;
+import org.testar.evidence.ArtifactReference;
+import org.testar.evidence.CandidateScope;
+import org.testar.evidence.CaptureScope;
+import org.testar.evidence.CheckReading;
+import org.testar.evidence.CheckResult;
+import org.testar.evidence.CheckRule;
+import org.testar.evidence.CheckStatus;
+import org.testar.evidence.CheckTarget;
+import org.testar.evidence.ConcreteState;
+import org.testar.evidence.Event;
+import org.testar.evidence.EventEnvelope;
+import org.testar.evidence.Execution;
+import org.testar.evidence.ExpectedValue;
+import org.testar.evidence.JsonlStore;
+import org.testar.evidence.Manifest;
+import org.testar.evidence.Observation;
+import org.testar.evidence.Properties;
+import org.testar.evidence.Run;
+import org.testar.evidence.Widget;
 
 /** Records actions and checks explicitly submitted through this session. The caller owns the page. */
 public final class PlaywrightEvidence implements AutoCloseable {

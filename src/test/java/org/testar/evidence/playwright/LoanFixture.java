@@ -1,4 +1,4 @@
-package org.testar.statemodel.playwright;
+package org.testar.evidence.playwright;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;

@@ -1,4 +1,4 @@
-package org.testar.statemodel.playwright;
+package org.testar.evidence.playwright;
 
 import static com.microsoft.playwright.assertions.PlaywrightAssertions.assertThat;
 
@@ -9,12 +9,12 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Supplier;
-import org.testar.statemodel.evidence.CheckReading;
-import org.testar.statemodel.evidence.CheckRule;
-import org.testar.statemodel.evidence.CheckStatus;
-import org.testar.statemodel.evidence.EvidenceJson;
-import org.testar.statemodel.evidence.ExpectedValue;
-import org.testar.statemodel.evidence.Properties;
+import org.testar.evidence.CheckReading;
+import org.testar.evidence.CheckRule;
+import org.testar.evidence.CheckStatus;
+import org.testar.evidence.EvidenceJson;
+import org.testar.evidence.ExpectedValue;
+import org.testar.evidence.Properties;
 
 public final class PlaywrightChecks {
     private final PlaywrightEvidence evidence;

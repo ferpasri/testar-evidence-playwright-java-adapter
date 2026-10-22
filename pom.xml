@@ -2,10 +2,10 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.testar</groupId>
-    <artifactId>testar-state-model-playwright-java-adapter</artifactId>
+    <artifactId>testar-evidence-playwright-java-adapter</artifactId>
     <version>0.2.1</version>
-    <name>TESTAR State Model Playwright Java Adapter</name>
-    <description>Playwright Java executions as portable state-model evidence</description>
+    <name>TESTAR Evidence Playwright Java Adapter</name>
+    <description>Playwright Java executions as portable test evidence</description>
     <properties>
         <maven.compiler.release>17</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -20,7 +20,7 @@
     <dependencies>
         <dependency>
             <groupId>org.testar</groupId>
-            <artifactId>testar-state-model</artifactId>
+            <artifactId>testar-evidence</artifactId>
             <version>0.2.1</version>
         </dependency>
         <dependency>

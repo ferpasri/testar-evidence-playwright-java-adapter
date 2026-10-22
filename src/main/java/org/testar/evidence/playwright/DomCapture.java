@@ -1,4 +1,4 @@
-package org.testar.statemodel.playwright;
+package org.testar.evidence.playwright;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -16,9 +16,9 @@ import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
-import org.testar.statemodel.evidence.EvidenceJson;
-import org.testar.statemodel.evidence.Properties;
-import org.testar.statemodel.evidence.Widget;
+import org.testar.evidence.EvidenceJson;
+import org.testar.evidence.Properties;
+import org.testar.evidence.Widget;
 
 final class DomCapture {
     private static final String SCRIPT = resource("capture.js");

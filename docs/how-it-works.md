@@ -7,24 +7,24 @@ Your Java script
     -> PlaywrightEvidence: action and recording boundaries
     -> PlaywrightChecks: assertions and their results
     -> DomCapture + JavaScript: browser readings and screenshots
-    -> testar-state-model-java: validation and portable files
+    -> testar-evidence-java: validation and portable files
 ```
 
 ## The components
 
 | Component | What it does |
 | --- | --- |
-| [PlaywrightEvidence.java](../src/main/java/org/testar/statemodel/playwright/PlaywrightEvidence.java) | Starts a recorded run, executes wrapped actions, connects observations to executions, and finishes the run. This is the main entry point for scripts. |
-| [PlaywrightChecks.java](../src/main/java/org/testar/statemodel/playwright/PlaywrightChecks.java) | Runs wrapped assertions and reports their expected value, final reading, status, and target. |
-| [CaptureOptions.java](../src/main/java/org/testar/statemodel/playwright/CaptureOptions.java) | Configures capture limits, selected computed styles, excluded attributes, and screenshots. |
-| [DomCapture.java](../src/main/java/org/testar/statemodel/playwright/DomCapture.java) | Executes the browser scripts, converts their readings into generic widgets, and takes the screenshot. |
-| [BrowserSnapshot.java](../src/main/java/org/testar/statemodel/playwright/BrowserSnapshot.java) | Holds one capture in memory: timestamp, page properties, widgets, and screenshot bytes. It also finds captured widgets by DOM path. |
-| [capture.js](../src/main/resources/org/testar/statemodel/playwright/capture.js) | Reads the document and elements in the browser, including selected properties, hierarchy, capture descriptions, and known omissions. |
-| [target.js](../src/main/resources/org/testar/statemodel/playwright/target.js) | Calculates the structural path of a locator's element so it can be connected to a captured widget. |
+| [PlaywrightEvidence.java](../src/main/java/org/testar/evidence/playwright/PlaywrightEvidence.java) | Starts a recorded run, executes wrapped actions, connects observations to executions, and finishes the run. This is the main entry point for scripts. |
+| [PlaywrightChecks.java](../src/main/java/org/testar/evidence/playwright/PlaywrightChecks.java) | Runs wrapped assertions and reports their expected value, final reading, status, and target. |
+| [CaptureOptions.java](../src/main/java/org/testar/evidence/playwright/CaptureOptions.java) | Configures capture limits, selected computed styles, excluded attributes, and screenshots. |
+| [DomCapture.java](../src/main/java/org/testar/evidence/playwright/DomCapture.java) | Executes the browser scripts, converts their readings into generic widgets, and takes the screenshot. |
+| [BrowserSnapshot.java](../src/main/java/org/testar/evidence/playwright/BrowserSnapshot.java) | Holds one capture in memory: timestamp, page properties, widgets, and screenshot bytes. It also finds captured widgets by DOM path. |
+| [capture.js](../src/main/resources/org/testar/evidence/playwright/capture.js) | Reads the document and elements in the browser, including selected properties, hierarchy, capture descriptions, and known omissions. |
+| [target.js](../src/main/resources/org/testar/evidence/playwright/target.js) | Calculates the structural path of a locator's element so it can be connected to a captured widget. |
 
 `DomCapture` and `BrowserSnapshot` are internal helpers. Most scripts use `PlaywrightEvidence`, `PlaywrightChecks`, and optionally `CaptureOptions`.
 
-The imported `testar-state-model-java` library supplies the generic records and `JsonlStore`. It validates events and manages the manifest, JSONL log, and screenshot artifacts. Browser-specific interpretation belongs to this adapter.
+The imported `testar-evidence-java` library supplies the generic records and `JsonlStore`. It validates events and manages the manifest, JSONL log, and screenshot artifacts. Browser-specific interpretation belongs to this adapter.
 
 ## Integrating an existing script
 
@@ -42,7 +42,7 @@ try (PlaywrightEvidence evidence = PlaywrightEvidence.start(output, page)) {
 }
 ```
 
-Here `output` is a fresh model directory, `page` is the caller's Playwright page, and `url` is the starting address. Imports and the complete browser setup are shown in [ParabankDeniedLoan.java](../src/test/java/org/testar/statemodel/playwright/examples/ParabankDeniedLoan.java).
+Here `output` is a fresh model directory, `page` is the caller's Playwright page, and `url` is the starting address. Imports and the complete browser setup are shown in [ParabankDeniedLoan.java](../src/test/java/org/testar/evidence/playwright/examples/ParabankDeniedLoan.java).
 
 Direct calls such as `locator.click()` and ordinary assertions still work, but the adapter does not automatically intercept them. Use the recording helpers for operations that should appear in the evidence. The caller also controls waits and application readiness.
 

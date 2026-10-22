@@ -1,4 +1,4 @@
-package org.testar.statemodel.playwright.examples;
+package org.testar.evidence.playwright.examples;
 
 import com.microsoft.playwright.Browser;
 import com.microsoft.playwright.BrowserType;
@@ -8,7 +8,7 @@ import com.microsoft.playwright.options.AriaRole;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.UUID;
-import org.testar.statemodel.playwright.PlaywrightEvidence;
+import org.testar.evidence.playwright.PlaywrightEvidence;
 
 public final class ParabankDeniedLoan {
     private ParabankDeniedLoan() {
