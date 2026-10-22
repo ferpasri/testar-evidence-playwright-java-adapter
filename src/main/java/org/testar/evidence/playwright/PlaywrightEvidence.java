@@ -22,7 +22,7 @@ import org.testar.evidence.CheckStatus;
 import org.testar.evidence.CheckTarget;
 import org.testar.evidence.ConcreteState;
 import org.testar.evidence.Event;
-import org.testar.evidence.EventEnvelope;
+import org.testar.evidence.EvidenceEvent;
 import org.testar.evidence.Execution;
 import org.testar.evidence.ExpectedValue;
 import org.testar.evidence.JsonlStore;
@@ -253,7 +253,7 @@ public final class PlaywrightEvidence implements AutoCloseable {
 
     private void emit(Event event) throws IOException {
         long next = events + 1;
-        if (!store.record(new EventEnvelope(runId + ":event:" + next, event))) {
+        if (!store.record(new EvidenceEvent(runId + ":event:" + next, event))) {
             throw new IllegalStateException("Duplicate recorder event");
         }
         events = next;

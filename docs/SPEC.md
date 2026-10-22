@@ -1,6 +1,6 @@
 # Playwright Java adapter specification
 
-The adapter translates explicit script actions and test-oracle evaluations into records accepted by the Java state-model library. Each session creates one run and a portable evidence directory.
+The adapter translates explicit script actions and test-oracle evaluations into records accepted by the Java state-model library. Each session creates one run and a portable evidence directory. Completed actions connect their before and resulting observations into a state-action-state execution trace. The loan example chooses a timestamped directory using its application and test objective labels; callers of the adapter can supply an explicit directory.
 
 For a walkthrough of the classes and script integration, see [How it works](how-it-works.md).
 

@@ -51,7 +51,7 @@ The example runs headlessly. Add `"-Dplaywright.headed=true"` to show the browse
 mvn test-compile exec:java "-Dexec.mainClass=org.testar.evidence.playwright.examples.ParabankDeniedLoan" "-Dexec.classpathScope=test" "-Dexec.args=https://para.testar.org/parabank/index.htm target/my-loan-evidence"
 ```
 
-Each default run creates a fresh `target/parabank-denied-loan-<unique-id>/` directory. A supplied output directory must contain no existing model. The printed path contains `manifest.json`, `evidence.jsonl`, and PNG files in `artifacts/`; load that whole directory in the dashboard.
+Each default run creates a directory such as `target/traces/parabank_denied-loan_trace-2026-10-22_15-30-12-123/`. The timestamp uses local time and includes milliseconds. A collision adds a numeric suffix without replacing earlier evidence. A supplied output directory remains the exact requested path and must contain no existing model. The printed path contains `manifest.json`, `evidence.jsonl`, and PNG files in `artifacts/`; load that whole directory in the dashboard.
 
 The scenario records navigation, seven form/link actions, and three explicit text evaluations. A successful scenario has eight execution links and nine observations. The expected loan denial produces a passed evaluation. The hosted application's account data and behavior determine whether the scenario succeeds; the local integration fixture provides repeatable test data.
 

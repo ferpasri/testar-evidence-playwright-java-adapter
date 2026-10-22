@@ -7,7 +7,6 @@ import com.microsoft.playwright.Playwright;
 import com.microsoft.playwright.options.AriaRole;
 import java.nio.file.Path;
 import java.util.Map;
-import java.util.UUID;
 import org.testar.evidence.playwright.PlaywrightEvidence;
 
 public final class ParabankDeniedLoan {
@@ -16,8 +15,7 @@ public final class ParabankDeniedLoan {
 
     public static void main(String[] arguments) throws Exception {
         String url = arguments.length > 0 ? arguments[0] : "https://para.testar.org/parabank/index.htm";
-        Path output = arguments.length > 1 ? Path.of(arguments[1])
-            : Path.of("target", "parabank-denied-loan-" + UUID.randomUUID());
+        Path output = outputDirectory(arguments);
         BrowserType.LaunchOptions launch = new BrowserType.LaunchOptions()
             .setHeadless(!Boolean.getBoolean("playwright.headed"));
         String channel = System.getProperty("playwright.channel");
@@ -37,6 +35,13 @@ public final class ParabankDeniedLoan {
                 evidence.finish("completed");
             }
         }
+    }
+
+    static Path outputDirectory(String[] arguments) throws Exception {
+        if (arguments.length > 1) {
+            return Path.of(arguments[1]);
+        }
+        return TraceDirectories.create(Path.of("target", "traces"), "parabank", "denied-loan");
     }
 
     /** Each helper records a deliberate script action or a specific test-oracle evaluation. */
