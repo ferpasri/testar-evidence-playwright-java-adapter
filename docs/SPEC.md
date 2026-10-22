@@ -2,6 +2,8 @@
 
 The adapter translates explicit script actions and test-oracle evaluations into records accepted by the Java state-model library. Each session creates one run and a portable evidence directory.
 
+For a walkthrough of the classes and script integration, see [How it works](how-it-works.md).
+
 ## Components
 
 | Component | Responsibility |

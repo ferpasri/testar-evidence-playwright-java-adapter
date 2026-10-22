@@ -83,4 +83,4 @@ try (PlaywrightEvidence evidence = PlaywrightEvidence.start(output, page)) {
 
 Actions and assertions are recorded through these helpers. `perform` wraps custom actions and their parameters; `checks().evaluate` wraps custom assertions, readings, and targets. Password input values are omitted during capture, and `fillSecret` omits the supplied value from execution parameters.
 
-See [SPEC](docs/SPEC.md) for recording behavior and [TODO](TODO.md) for planned work.
+See [How it works](docs/how-it-works.md) for the components, recording flow, and script integration; [SPEC](docs/SPEC.md) for recording behavior; and [TODO](TODO.md) for planned work.
