@@ -28,7 +28,8 @@ public final class ParabankDeniedLoan {
              Browser browser = playwright.chromium().launch(launch)) {
             Page page = browser.newPage();
             page.setDefaultTimeout(15_000);
-            try (PlaywrightEvidence evidence = PlaywrightEvidence.start(output, page)) {
+            try (PlaywrightEvidence evidence = PlaywrightEvidence.start(output, page,
+                    "Loan-denial example script", "Verify that an oversized loan request is denied")) {
                 System.out.println("Evidence: " + output.toAbsolutePath());
                 evidence.checks().timeoutMillis(15_000);
                 run(evidence, page, url);

@@ -1,115 +1,81 @@
 # How the Playwright Java adapter works
 
-The adapter records what a script does, what the browser contains, and what its test oracles report. The script controls the browser and test flow; the adapter translates those operations into generic state-model evidence.
+The adapter sits between a Java script and Playwright. Playwright controls the browser; the adapter records the actions, captured pages, and final check results in the shared evidence format.
 
 ```text
-Your Java script
-    -> PlaywrightEvidence: action and recording boundaries
-    -> PlaywrightChecks: assertions and their results
-    -> DomCapture + JavaScript: browser readings and screenshots
+Java script using normal Page and Locator calls
+    -> EvidencePlaywright and EvidenceAssertions
+    -> PlaywrightEvidence and PlaywrightChecks
+    -> DomCapture and browser capture scripts
     -> testar-evidence-java: validation and portable files
 ```
 
-## The components
+## Starting with an existing script
 
-| Component | What it does |
+Change `Playwright.create()` to `EvidencePlaywright.create()`. Change the static `assertThat` import to `org.testar.evidence.playwright.EvidenceAssertions.assertThat`. Keep the normal `com.microsoft.playwright` types and operation calls.
+
+```java
+page.locator("input[name='password']").fill("demo");
+page.locator("input[value='Log In']").click();
+assertThat(page.locator("#leftPanel h2")).hasText("Account Services");
+```
+
+The facade delegates the fill and click once, records their results, and lets Playwright retry the text assertion normally. It then records one final assertion outcome. Native Playwright objects created outside the facade keep their ordinary behavior.
+
+The [complete facade example](../src/test/java/org/testar/evidence/playwright/examples/ParabankFacade.java) includes browser setup and the loan-denial script. The [explicit example](../src/test/java/org/testar/evidence/playwright/examples/ParabankDeniedLoan.java) shows caller-defined recording boundaries.
+
+## The classes
+
+| Class or file | What it does |
 | --- | --- |
-| [PlaywrightEvidence.java](../src/main/java/org/testar/evidence/playwright/PlaywrightEvidence.java) | Starts a recorded run, executes wrapped actions, connects observations to executions, and finishes the run. This is the main entry point for scripts. |
-| [PlaywrightChecks.java](../src/main/java/org/testar/evidence/playwright/PlaywrightChecks.java) | Runs wrapped assertions and reports their expected value, final reading, status, and target. |
-| [CaptureOptions.java](../src/main/java/org/testar/evidence/playwright/CaptureOptions.java) | Configures capture limits, selected computed styles, excluded attributes, and screenshots. |
-| [DomCapture.java](../src/main/java/org/testar/evidence/playwright/DomCapture.java) | Executes the browser scripts, converts their readings into generic widgets, and takes the screenshot. |
-| [BrowserSnapshot.java](../src/main/java/org/testar/evidence/playwright/BrowserSnapshot.java) | Holds one capture in memory: timestamp, page properties, widgets, and screenshot bytes. It also finds captured widgets by DOM path. |
-| [capture.js](../src/main/resources/org/testar/evidence/playwright/capture.js) | Reads the document and elements in the browser, including selected properties, hierarchy, capture descriptions, and known omissions. |
-| [target.js](../src/main/resources/org/testar/evidence/playwright/target.js) | Calculates the structural path of a locator's element so it can be connected to a captured widget. |
+| `EvidencePlaywright` | Creates the recording Playwright session and gives access to a page's recorder through `evidenceFor(page)`. |
+| `EvidenceOptions` | Chooses the parent output directory, SUT label, optional origin and test objective, and capture settings. |
+| `EvidenceAssertions` | Replaces the native assertion factory import so assertions can be recorded. |
+| `FacadeRuntime` | Wraps objects returned by Playwright, forwards native calls and callbacks, and manages a separate trace for each used page. |
+| `FacadeActions` | Identifies interactions, resolves their locator when available, and selects arguments to record or redact. |
+| `FacadeAssertions` | Runs native assertions and connects the final status and available reading to an observation, widget, or property. |
+| `FacadeValues` | Converts supported argument values and options into descriptive JSON data. |
+| `PlaywrightEvidence` | Writes action selection, submission, observations, execution links, and the run ending. It also provides explicit action boundaries. |
+| `PlaywrightChecks` | Records the outcome, expectation, reading, and target of an assertion or custom oracle. |
+| `CaptureOptions` | Selects capture limits, computed styles, excluded attributes, and screenshots. |
+| `DomCapture` / `BrowserSnapshot` | Read browser data and hold one captured page, its widgets, timestamp, and screenshot. |
+| `capture.js` | Extracts the document, elements, properties, hierarchy, and capture descriptions. |
+| `target.js` | Finds a locator's structural DOM path so its element can be connected to a captured widget. |
 
-`DomCapture` and `BrowserSnapshot` are internal helpers. Most scripts use `PlaywrightEvidence`, `PlaywrightChecks`, and optionally `CaptureOptions`.
+The facade classes are internal helpers; scripts normally use `EvidencePlaywright`, `EvidenceAssertions`, and optionally `EvidenceOptions`. The imported Java evidence library validates the generic records and saves the manifest, JSONL log, and screenshot artifacts.
 
-The imported `testar-evidence-java` library supplies the generic records and `JsonlStore`. It validates events and manages the manifest, JSONL log, and screenshot artifacts. Browser-specific interpretation belongs to this adapter.
+## Following an action and check
 
-## Integrating an existing script
+For **Apply Now**, followed by checking **Denied**:
 
-Keep the existing Playwright browser, page, and locators. Start an evidence session and route the actions and assertions you want recorded through its helpers:
+1. The recorder uses its latest pending capture or captures the source page. The button's DOM path identifies its captured widget when available.
+2. It records the selected click and delegates to native Playwright. A normal return records an accepted submission; an exception records a rejected submission and is rethrown.
+3. After a successful action, the facade captures the resulting page. This completes the action's state-action-state path when the capture is written.
+4. The native text assertion retries until it succeeds or fails. The adapter reads the final text, captures the page, and records the assertion's result and target.
+5. The next action or page/session closure writes the pending records. A result capture can also be the next action's source.
 
-```java
-try (PlaywrightEvidence evidence = PlaywrightEvidence.start(output, page)) {
-    evidence.navigate(url);
-    evidence.fill(page.locator("input[name='username']"), "john");
-    evidence.fillSecret(page.locator("input[name='password']"), "demo");
-    evidence.click(page.locator("input[value='Log In']"));
-    evidence.checks().hasText("example:account-services", "Account Services is displayed",
-        page.locator("#leftPanel h2"), "Account Services");
-    evidence.finish("completed");
-}
-```
+The business response **Denied** passes this check because denial is the expected result. An accepted click alone does not establish that the response is correct.
 
-Here `output` is a fresh model directory, `page` is the caller's Playwright page, and `url` is the starting address. Imports and the complete browser setup are shown in [ParabankDeniedLoan.java](../src/test/java/org/testar/evidence/playwright/examples/ParabankDeniedLoan.java).
+A pending capture is a short-lived in-memory snapshot, distinct from a check whose status is `pending`. Separate captures remain separate visits, even if their contents match. Reads, waits, and script evaluation remain native operations without automatic action records. The script controls application readiness.
 
-Direct calls such as `locator.click()` and ordinary assertions still work, but the adapter does not automatically intercept them. Use the recording helpers for operations that should appear in the evidence. The caller also controls waits and application readiness.
+## Adding deeper integration
 
-## Following one action and assertion
+Obtain the existing recorder with `EvidencePlaywright.evidenceFor(page)`. Use `perform(...)` to name a custom action or group several native operations into one action. Use `checks().evaluate(...)` for an ordinary Java assertion, an external oracle, or a custom reading. The adapter suppresses automatic records inside these explicit boundaries to avoid duplicates.
 
-Consider clicking **Apply Now**, then checking that the loan status is **Denied**:
+Custom check callers provide a rule, expected value, target property, assertion callback, and reading supplier. A failed assertion is recorded and rethrown. An unavailable reading remains unknown; an explicitly absent DOM attribute is recorded as absent. Custom callers choose and redact their own recorded data.
 
-```java
-evidence.click(page.locator("input[value='Apply Now']"));
-evidence.checks().hasText("example:loan-denied", "The loan request is denied",
-    page.locator("#loanStatus"), "Denied");
-```
+An exploratory integration can supply the alternative actions it discovered through a deeper integration. The facade's next selected action is evidence of that action, not a complete inventory of possible interactions.
 
-1. Before the click, `PlaywrightEvidence` uses an existing pending capture or asks `DomCapture` to take one. `capture.js` reads the page; `DomCapture` converts its elements into widgets and optionally takes a PNG screenshot.
-2. `target.js` identifies the button's structural DOM path. The adapter looks for the corresponding widget in the capture.
-3. The adapter writes the source observation with the next scripted action as a candidate, records action selection, and calls Playwright's click operation. A normal return records an accepted submission; an exception records a rejected submission with its error and is rethrown.
-4. `PlaywrightChecks` runs Playwright's retrying text assertion. Once it finishes, the helper reads the actual text, captures the page, and prepares the evaluation targeting that observation and widget property where identifiable.
-5. At the next action or session ending, the adapter writes the pending observation, links the accepted click to this resulting observation, and writes the evaluation.
+## Captures and trace files
 
-The expected business result is **Denied**, so this assertion passes when that text appears. An accepted click alone does not establish that the application's response was correct.
+Each used page gets a fresh timestamped child directory under the configured parent. The SUT and optional test objective labels help name the directory. Optional origin and test objective descriptions are stored on the run; the adapter's own identifier and version are automatic.
 
-## Why an observation can remain pending
+Closing the page, context, browser, or Playwright finishes its recorder. If the page closes externally, the recorder saves the cached result without trying to capture the closed page. Trace files contain `manifest.json`, `evidence.jsonl`, and optional screenshot artifacts. Load the whole individual trace directory into a consumer such as the dashboard.
 
-The adapter briefly keeps the latest captured observation in memory until the next action is known. It can then attach that action as a candidate to the same observation. An action's result observation can therefore also be the next action's source.
+Captures include the document, DOM elements, and open shadow roots. Page URL/title use `ui.url` and `ui.title`; widget attributes and live values keep their concrete source meanings and declared aliases. Capture descriptions identify selection limits, omissions, and redactions. Frame documents and closed shadow roots have a recorded capture limitation.
 
-This pending capture is unrelated to an evaluation with status `pending`.
+A missing captured property does not establish that the application lacks that property. Collecting a property does not establish that an oracle checked it. Structural widget paths identify widgets within their observation; consumers decide how to match visits or derive an abstract model.
 
-`observe()` records an additional visit without executing an action. Consecutive assertions get separate captured visits; the adapter does not invent actions between them. Identical captured content can appear in several visits.
+DOM extraction, screenshots, locator resolution, and assertion readings are successive browser operations. A changing application can differ between them.
 
-`finish(reason)` writes outstanding records and the run ending. A try-with-resources block closes the writer even when a test fails; closing an unfinished session attempts to finish it with the known ending reason.
-
-## What capture tells you
-
-The capture includes the document, DOM elements, and open shadow roots. Page URL and title have shared aliases `ui.url` and `ui.title`. Widgets retain source properties such as `playwright.dom.textContent` and `playwright.attribute.alt`; declared aliases identify equal readings under shared names such as `ui.text` and `ui.alt`.
-
-`CaptureOptions` controls collection limits and selected computed styles. `evidence.capture` describes the collection policy and truncation, while `evidence.omitted_properties` records known exclusions, unavailable readings, redactions, and limits. Password values are redacted from capture; `fillSecret` also leaves the supplied value out of action parameters.
-
-Frame contents and closed shadow roots are outside the current capture scope. A missing captured property does not establish that the property is absent from the application. Collecting a property also does not mean a test oracle evaluated it.
-
-Widget identifiers derive from structural DOM paths and must be interpreted within their observation. The same path across visits does not establish the same logical widget. Cross-source matching and abstraction belong to consumers of the recorded evidence.
-
-DOM extraction, screenshot capture, assertion readings, and locator resolution are successive browser operations. The application can change between them; they are not one atomic browser snapshot.
-
-## Extending actions and test oracles
-
-Use `perform(...)` for an action without a convenience helper. Supply its kind, description, locator, parameters, and the operation to execute:
-
-```java
-Locator account = page.locator("#fromAccountId");
-evidence.perform("select", "Select source account", account,
-    Map.of("value", "12345"), () -> account.selectOption("12345"));
-```
-
-This needs `com.microsoft.playwright.Locator` and `java.util.Map`. Choose an account value available in the application. A multi-step routine wrapped in one `perform` call produces one outer action. Wrap its individual operations separately when the trace needs those individual steps.
-
-The built-in check helpers are `hasText`, `hasValue`, and `hasAttribute`. They retain Playwright's assertion retry behavior and record one final outcome. `checks().timeoutMillis(...)` configures their assertion timeout.
-
-For another oracle, use `checks().evaluate(...)`. Supply the rule identity and parameters, expected value, locator and property key, assertion callback, and a supplier for the actual reading. The assertion decides success or failure and owns its retry behavior; the reading supplier reports the final value, explicit absence, or unknown reading.
-
-A failed assertion is recorded and rethrown; other runtime exceptions are reported as errors and rethrown. If the widget cannot be matched to the capture, the adapter retains an observation-level evaluation with the requested target and an explanation. It does not invent a widget or assign its result to every property.
-
-Custom action parameters, assertion expectations, and readings are supplied by the script author. Choose what to record deliberately, including any sensitive values.
-
-## Where to change behavior
-
-Change capture fields in `capture.js`, their Java conversion in `DomCapture`, and configuration in `CaptureOptions`. Keep the structural-path logic consistent between `capture.js` and `target.js`.
-
-Add action lifecycle behavior in `PlaywrightEvidence` and assertion helpers in `PlaywrightChecks`. Keep generic serialization and validation in the state-model library. Browser integration tests exercise the resulting evidence, while the shared contract remains defined by the specs repository.
-
-See [SPEC.md](SPEC.md) for recording rules and limits, and [the README](../README.md) for setup and execution commands.
+See [SPEC](SPEC.md) for recording rules and [README](../README.md) for commands and configuration.

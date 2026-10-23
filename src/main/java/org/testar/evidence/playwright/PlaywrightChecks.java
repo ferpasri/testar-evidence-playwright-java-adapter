@@ -37,7 +37,8 @@ public final class PlaywrightChecks {
         evaluate(name, new CheckRule(ruleId, "1", Properties.of(Map.of(
             "comparison", "playwright.hasText", "timeout_millis", timeoutMillis))),
             locator, "playwright.dom.textContent", ExpectedValue.of(expected),
-            () -> assertThat(locator).hasText(expected, new LocatorAssertions.HasTextOptions().setTimeout(timeoutMillis)),
+            () -> assertThat((Locator) FacadeRuntime.unwrap(locator)).hasText(expected,
+                new LocatorAssertions.HasTextOptions().setTimeout(timeoutMillis)),
             () -> value(locator.textContent()));
     }
 
@@ -46,7 +47,8 @@ public final class PlaywrightChecks {
         evaluate(name, new CheckRule(ruleId, "1", Properties.of(Map.of(
             "comparison", "playwright.hasValue", "timeout_millis", timeoutMillis))),
             locator, "playwright.dom.value", ExpectedValue.of(expected),
-            () -> assertThat(locator).hasValue(expected, new LocatorAssertions.HasValueOptions().setTimeout(timeoutMillis)),
+            () -> assertThat((Locator) FacadeRuntime.unwrap(locator)).hasValue(expected,
+                new LocatorAssertions.HasValueOptions().setTimeout(timeoutMillis)),
             () -> value(locator.inputValue()));
     }
 
@@ -56,7 +58,7 @@ public final class PlaywrightChecks {
         evaluate(name, new CheckRule(ruleId, "1", Properties.of(Map.of(
             "comparison", "playwright.hasAttribute", "attribute", attribute, "timeout_millis", timeoutMillis))),
             locator, "playwright.attribute." + attribute, ExpectedValue.of(expected),
-            () -> assertThat(locator).hasAttribute(attribute, expected,
+            () -> assertThat((Locator) FacadeRuntime.unwrap(locator)).hasAttribute(attribute, expected,
                 new LocatorAssertions.HasAttributeOptions().setTimeout(timeoutMillis)),
             () -> {
                 String actual = locator.getAttribute(attribute);
@@ -67,6 +69,17 @@ public final class PlaywrightChecks {
     /** Wraps one existing assertion; its retry behavior and thrown failure remain with that assertion. */
     public void evaluate(String name, CheckRule rule, Locator locator, String property, ExpectedValue expected,
                          Runnable assertion, Supplier<CheckReading> reading) throws IOException {
+        evaluateAutomatic(name, rule, (Locator) FacadeRuntime.unwrap(locator), property, expected,
+            assertion, reading, false);
+    }
+
+    void evaluateAutomatic(String name, CheckRule rule, Locator locator, String property, ExpectedValue expected,
+                           Runnable assertion, Supplier<CheckReading> reading, boolean redactError) throws IOException {
+        evidence.inScope(() -> evaluateInternal(name, rule, locator, property, expected, assertion, reading, redactError));
+    }
+
+    private void evaluateInternal(String name, CheckRule rule, Locator locator, String property, ExpectedValue expected,
+                                  Runnable assertion, Supplier<CheckReading> reading, boolean redactError) throws IOException {
         Objects.requireNonNull(name, "name");
         Objects.requireNonNull(rule, "rule");
         Objects.requireNonNull(expected, "expected");
@@ -85,14 +98,14 @@ public final class PlaywrightChecks {
         }
         Map<String, Object> details = new LinkedHashMap<>();
         if (failure != null) {
-            details.put("playwright.assertion_error", failure.toString());
+            details.put("playwright.assertion_error", redactError ? "Assertion failed; sensitive details withheld" : failure.toString());
         }
         CheckReading actual;
         try {
             actual = Objects.requireNonNull(reading.get(), "actual reading");
         } catch (RuntimeException error) {
             actual = new CheckReading.Unknown();
-            details.put("playwright.reading_error", error.toString());
+            details.put("playwright.reading_error", redactError ? "Sensitive reading unavailable" : error.toString());
         }
         try {
             evidence.recordCheck(name, rule, locator, property, expected, status, actual, details);

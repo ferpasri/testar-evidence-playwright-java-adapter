@@ -76,6 +76,63 @@ class PlaywrightEvidenceIT {
     }
 
     @Test
+    void run_descriptions_preserve_source_names_and_objectives_without_classifying_actions() throws Exception {
+        page.setContent("<button>Continue</button>");
+        try (PlaywrightEvidence evidence = PlaywrightEvidence.start(directory, page,
+                "  QA équipe / custom CI  ", "  Request loan — prêt  ")) {
+            evidence.click(page.locator("button"));
+        }
+        StateModel model = EvidenceReader.read(directory);
+        var properties = model.runs().get(0).run().properties();
+        assertEquals("  QA équipe / custom CI  ", properties.get("evidence.origin").asText());
+        assertEquals("  Request loan — prêt  ", properties.get("evidence.test_objective").asText());
+        assertEquals(PlaywrightEvidence.ADAPTER_ID, properties.get("evidence.adapter").asText());
+        assertEquals(PlaywrightEvidence.VERSION, properties.get("evidence.adapter_version").asText());
+        assertFalse(model.executions().get(0).execution().parameters().contains("playwright.origin"));
+    }
+
+    @Test
+    void omitted_run_descriptions_stay_absent_and_adapter_identity_is_automatic() throws Exception {
+        try (PlaywrightEvidence evidence = PlaywrightEvidence.start(directory, page)) {
+            evidence.observe();
+        }
+        var properties = EvidenceReader.read(directory).runs().get(0).run().properties();
+        assertFalse(properties.contains("evidence.origin"));
+        assertFalse(properties.contains("evidence.test_objective"));
+        assertEquals(PlaywrightEvidence.ADAPTER_ID, properties.get("evidence.adapter").asText());
+        assertEquals(PlaywrightEvidence.VERSION, properties.get("evidence.adapter_version").asText());
+    }
+
+    @Test
+    void either_run_description_can_be_supplied_independently() throws Exception {
+        Path sourceOnly = directory.resolve("source");
+        try (PlaywrightEvidence evidence = PlaywrightEvidence.start(sourceOnly, page, "Custom runner", null)) {
+            evidence.observe();
+        }
+        var source = EvidenceReader.read(sourceOnly).runs().get(0).run().properties();
+        assertEquals("Custom runner", source.get("evidence.origin").asText());
+        assertFalse(source.contains("evidence.test_objective"));
+        Path objectiveOnly = directory.resolve("objective");
+        try (PlaywrightEvidence evidence = PlaywrightEvidence.start(objectiveOnly, page, null, "Inspect the loan form")) {
+            evidence.observe();
+        }
+        var objective = EvidenceReader.read(objectiveOnly).runs().get(0).run().properties();
+        assertEquals("Inspect the loan form", objective.get("evidence.test_objective").asText());
+        assertFalse(objective.contains("evidence.origin"));
+    }
+
+    @Test
+    void blank_descriptions_are_rejected_before_creating_a_trace() {
+        for (String blank : List.of("", " ", "\t\n")) {
+            Path output = directory.resolve("invalid");
+            assertThrows(IllegalArgumentException.class, () -> PlaywrightEvidence.start(output, page, blank, null));
+            assertFalse(Files.exists(output));
+            assertThrows(IllegalArgumentException.class, () -> PlaywrightEvidence.start(output, page, null, blank));
+            assertFalse(Files.exists(output));
+        }
+    }
+
+    @Test
     void loan_denial_script_produces_a_connected_trace_with_three_precise_passed_checks() throws Exception {
         try (LoanFixture fixture = new LoanFixture();
              PlaywrightEvidence evidence = PlaywrightEvidence.start(directory, page)) {
@@ -89,7 +146,7 @@ class PlaywrightEvidenceIT {
         assertEquals(9, model.observations().size());
         assertEquals(3, model.checks().size());
         assertEquals("completed", model.runs().get(0).reason());
-        assertEquals("0.2.1", model.runs().get(0).run().properties().get("playwright.adapter_version").asText());
+        assertEquals(PlaywrightEvidence.VERSION, model.runs().get(0).run().properties().get("evidence.adapter_version").asText());
         for (var check : model.checks()) {
             assertEquals(CheckStatus.PASSED, check.status());
             assertTrue(check.target() instanceof CheckTarget.WidgetProperty);

@@ -14,13 +14,13 @@ final class TraceDirectories {
     private TraceDirectories() {
     }
 
-    public static Path create(Path parent, String sut, String objective) throws IOException {
-        return create(parent, sut, objective, LocalDateTime.now());
+    public static Path create(Path parent, String sut, String testObjective) throws IOException {
+        return create(parent, sut, testObjective, LocalDateTime.now());
     }
 
-    static Path create(Path parent, String sut, String objective, LocalDateTime time) throws IOException {
+    static Path create(Path parent, String sut, String testObjective, LocalDateTime time) throws IOException {
         Files.createDirectories(parent);
-        String name = label(sut, "sut") + "_" + label(objective, "objective")
+        String name = label(sut, "sut") + "_" + label(testObjective, "objective")
             + "_trace-" + TIMESTAMP.format(time);
         long suffix = 1;
         while (true) {

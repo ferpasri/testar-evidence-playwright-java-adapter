@@ -34,7 +34,8 @@ import org.testar.evidence.Widget;
 
 /** Records actions and checks explicitly submitted through this session. The caller owns the page. */
 public final class PlaywrightEvidence implements AutoCloseable {
-    public static final String VERSION = "0.2.1";
+    public static final String VERSION = "0.2.2";
+    public static final String ADAPTER_ID = "testar-evidence-playwright-java-adapter";
 
     private final Page page;
     private final CaptureOptions options;
@@ -49,6 +50,8 @@ public final class PlaywrightEvidence implements AutoCloseable {
     private String pendingResult;
     private String lastObservation;
     private String endingReason = "closed";
+    private FacadeRuntime facade;
+    private boolean broken;
     private boolean finished;
     private boolean closed;
 
@@ -65,14 +68,32 @@ public final class PlaywrightEvidence implements AutoCloseable {
     }
 
     public static PlaywrightEvidence start(Path directory, Page page, CaptureOptions options) throws IOException {
+        return start(directory, page, options, null, null);
+    }
+
+    public static PlaywrightEvidence start(Path directory, Page page, String origin, String testObjective) throws IOException {
+        return start(directory, page, CaptureOptions.defaults(), origin, testObjective);
+    }
+
+    public static PlaywrightEvidence start(Path directory, Page page, CaptureOptions options,
+                                           String origin, String testObjective) throws IOException {
         Objects.requireNonNull(page, "page");
         Objects.requireNonNull(options, "options");
+        FacadeRuntime facade = FacadeRuntime.runtimeOf(page);
+        page = (Page) FacadeRuntime.unwrap(page);
+        Map<String, Object> properties = new LinkedHashMap<>();
+        addDescription(properties, "evidence.origin", origin);
+        addDescription(properties, "evidence.test_objective", testObjective);
+        properties.put("evidence.adapter", ADAPTER_ID);
+        properties.put("evidence.adapter_version", VERSION);
+        properties.put("playwright.initial_url", page.url());
         String identity = UUID.randomUUID().toString();
         JsonlStore store = JsonlStore.create(directory, new Manifest("playwright-java:model:" + identity));
         PlaywrightEvidence evidence = new PlaywrightEvidence(page, options, store, "playwright-java:run:" + identity);
+        evidence.facade = facade;
         try {
             evidence.emit(new Event.RunStarted(new Run(evidence.runId, "playwright-java", identity,
-                Properties.of(Map.of("playwright.adapter_version", VERSION, "playwright.initial_url", page.url())))));
+                Properties.of(properties))));
             return evidence;
         } catch (IOException | RuntimeException error) {
             try {
@@ -81,6 +102,15 @@ public final class PlaywrightEvidence implements AutoCloseable {
                 error.addSuppressed(cleanup);
             }
             throw error;
+        }
+    }
+
+    private static void addDescription(Map<String, Object> properties, String key, String value) {
+        if (value != null) {
+            if (value.isBlank()) {
+                throw new IllegalArgumentException("Run description must be nonblank: " + key);
+            }
+            properties.put(key, value);
         }
     }
 
@@ -113,6 +143,37 @@ public final class PlaywrightEvidence implements AutoCloseable {
     /** Supplies the test's action boundary and concrete arguments, including for custom actions. */
     public void perform(String kind, String name, Locator locator, Map<String, ?> parameters,
                         Runnable operation) throws IOException {
+        inScope(() -> performInternal(kind, name, (Locator) FacadeRuntime.unwrap(locator), parameters,
+            operation, false));
+    }
+
+    void attachFacade(FacadeRuntime runtime) {
+        facade = runtime;
+    }
+
+    void inScope(IoOperation operation) throws IOException {
+        if (facade != null) {
+            facade.enter();
+        }
+        try {
+            operation.run();
+        } finally {
+            if (facade != null) {
+                facade.leave();
+            }
+        }
+    }
+
+    void performAutomatic(String kind, Locator target, Map<String, ?> parameters, boolean redactError,
+                          Runnable operation) throws IOException {
+        inScope(() -> {
+            performInternal(kind, "Playwright " + kind, target, parameters, operation, redactError);
+            ensurePending();
+        });
+    }
+
+    private void performInternal(String kind, String name, Locator locator, Map<String, ?> parameters,
+                                 Runnable operation, boolean redactError) throws IOException {
         requireActive();
         Objects.requireNonNull(operation, "operation");
         Properties supplied = Properties.of(parameters);
@@ -124,7 +185,6 @@ public final class PlaywrightEvidence implements AutoCloseable {
         Widget target = pending.snapshot.widgetAt(path);
         Map<String, Object> actual = new LinkedHashMap<>();
         supplied.asJson().properties().forEach(entry -> actual.put(entry.getKey(), entry.getValue()));
-        actual.put("playwright.origin", "scripted");
         if (locator != null) {
             actual.put("playwright.locator", description);
             actual.put("playwright.target_resolution", target == null ? "not_captured" : "captured_dom_path");
@@ -144,7 +204,9 @@ public final class PlaywrightEvidence implements AutoCloseable {
         } catch (RuntimeException | AssertionError error) {
             endingReason = "action_failed";
             try {
-                emit(new Event.ActionSubmitted(execution, false, error.toString()));
+                emit(new Event.ActionSubmitted(execution, false,
+                    redactError ? "Playwright action failed; details withheld for a sensitive or unresolved target"
+                        : error.toString()));
             } catch (IOException | RuntimeException recording) {
                 error.addSuppressed(recording);
             }
@@ -178,6 +240,21 @@ public final class PlaywrightEvidence implements AutoCloseable {
             flush(null, null);
         }
         emit(new Event.RunFinished(runId, reason));
+        finished = true;
+    }
+
+    void finishAvailable(boolean capture) throws IOException {
+        if (finished || closed || broken) {
+            return;
+        }
+        if (capture) {
+            finish(endingReason);
+            return;
+        }
+        if (pending != null) {
+            flush(null, null);
+        }
+        emit(new Event.RunFinished(runId, endingReason));
         finished = true;
     }
 
@@ -253,29 +330,43 @@ public final class PlaywrightEvidence implements AutoCloseable {
 
     private void emit(Event event) throws IOException {
         long next = events + 1;
-        if (!store.record(new EvidenceEvent(runId + ":event:" + next, event))) {
-            throw new IllegalStateException("Duplicate recorder event");
+        try {
+            if (!store.record(new EvidenceEvent(runId + ":event:" + next, event))) {
+                throw new IllegalStateException("Duplicate recorder event");
+            }
+            events = next;
+        } catch (IOException | RuntimeException error) {
+            broken = true;
+            throw error;
         }
-        events = next;
     }
 
     private void requireActive() {
-        if (closed || finished) {
+        if (closed || finished || broken) {
             throw new IllegalStateException("Evidence session has finished");
         }
     }
 
     @Override
     public void close() throws IOException {
+        closeAvailable(!page.isClosed());
+    }
+
+    void closeAvailable(boolean capture) throws IOException {
         if (!closed) {
             try (store) {
-                if (!finished) {
-                    finish(endingReason);
+                if (!finished && !broken) {
+                    finishAvailable(capture);
                 }
             } finally {
                 closed = true;
             }
         }
+    }
+
+    @FunctionalInterface
+    interface IoOperation {
+        void run() throws IOException;
     }
 
     private static final class PendingObservation {
