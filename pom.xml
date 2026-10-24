@@ -3,7 +3,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.testar</groupId>
     <artifactId>testar-evidence-playwright-java-adapter</artifactId>
-    <version>0.2.2</version>
+    <version>0.3.0</version>
     <name>TESTAR Evidence Playwright Java Adapter</name>
     <description>Playwright Java executions as portable test evidence</description>
     <properties>
@@ -21,7 +21,7 @@
         <dependency>
             <groupId>org.testar</groupId>
             <artifactId>testar-evidence</artifactId>
-            <version>0.2.2</version>
+            <version>0.3.0</version>
         </dependency>
         <dependency>
             <groupId>com.microsoft.playwright</groupId>

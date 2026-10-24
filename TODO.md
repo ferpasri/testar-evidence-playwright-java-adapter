@@ -13,6 +13,10 @@
 - [ ] Extend concrete readings for accessible-name/description, role, ARIA snapshot, and viewport assertions.
 - [ ] Evaluate facade coverage as Playwright adds operations and callback interfaces.
 - [ ] Support frame-document capture and corresponding widget bindings.
-- [ ] Add explicit integration hooks for external test-runner metadata and lifecycle.
-- [ ] Evaluate optional candidate discovery with a clearly described discovery policy.
+- [ ] Evaluate optional automatic action discovery with a clearly described discovery policy.
 - [ ] Review capture size and performance on larger applications.
+
+- [x] Align the facade and explicit recording APIs with evidence library v0.3.0 and schema 3.
+- [x] Record separate test-run and test-sequence lifecycles, execution results, and recorded transitions.
+- [x] Preserve caller-reported available actions, existing oracle results, detailed targets, and optional oracle severity.
+- [ ] Support lifecycle and late-result reporting supplied by external test runners.

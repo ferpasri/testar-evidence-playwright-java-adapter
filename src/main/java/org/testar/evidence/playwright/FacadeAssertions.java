@@ -9,8 +9,8 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import org.testar.evidence.CheckReading;
-import org.testar.evidence.CheckRule;
+import org.testar.evidence.ObservedValue;
+import org.testar.evidence.Oracle;
 import org.testar.evidence.EvidenceJson;
 import org.testar.evidence.ExpectedValue;
 import org.testar.evidence.Properties;
@@ -73,7 +73,7 @@ final class FacadeAssertions implements InvocationHandler {
             : ExpectedValue.of(FacadeValues.describe(expected(method.getName(), arguments)));
         try {
             runtime.evidence(page).checks().evaluateAutomatic("Playwright " + (negated ? "not " : "") + method.getName(),
-                new CheckRule("playwright:" + method.getName() + (negated ? ":not" : ""), "1", Properties.of(descriptions)),
+                new Oracle("playwright:" + method.getName() + (negated ? ":not" : ""), "1", Properties.of(descriptions)),
                 collection ? null : locator, property, expected, () -> {
                     try {
                         FacadeRuntime.invokeNative(delegate, method, arguments);
@@ -82,7 +82,7 @@ final class FacadeAssertions implements InvocationHandler {
                     } catch (Throwable error) {
                         throw new IllegalStateException(error);
                     }
-                }, () -> sensitive ? new CheckReading.Unknown() : read(method.getName(), arguments), sensitive);
+                }, () -> sensitive ? new ObservedValue.Unknown() : read(method.getName(), arguments), sensitive);
         } catch (IOException error) {
             throw new UncheckedIOException(error);
         }
@@ -149,12 +149,12 @@ final class FacadeAssertions implements InvocationHandler {
         };
     }
 
-    private CheckReading read(String method, Object[] arguments) {
+    private ObservedValue read(String method, Object[] arguments) {
         if (locator == null) {
             return switch (method) {
                 case "hasTitle" -> value(page.title());
                 case "hasURL" -> value(page.url());
-                default -> new CheckReading.Unknown();
+                default -> new ObservedValue.Unknown();
             };
         }
         if (method.equals("hasCount")) {
@@ -167,7 +167,7 @@ final class FacadeAssertions implements InvocationHandler {
             return value(locator.count() > 0);
         }
         if (locator.count() != 1) {
-            return new CheckReading.Unknown();
+            return new ObservedValue.Unknown();
         }
         return switch (method) {
             case "hasText", "containsText" -> value(locator.evaluate(
@@ -189,16 +189,16 @@ final class FacadeAssertions implements InvocationHandler {
             case "isEditable" -> value(locator.isEditable(new Locator.IsEditableOptions().setTimeout(250)));
             case "isFocused" -> value(locator.evaluate("e => e === e.ownerDocument.activeElement", null,
                 new Locator.EvaluateOptions().setTimeout(250)));
-            default -> new CheckReading.Unknown();
+            default -> new ObservedValue.Unknown();
         };
     }
 
-    private CheckReading attribute(String name) {
+    private ObservedValue attribute(String name) {
         String actual = locator.getAttribute(name, new Locator.GetAttributeOptions().setTimeout(250));
-        return actual == null ? new CheckReading.Absent() : value(actual);
+        return actual == null ? new ObservedValue.Absent() : value(actual);
     }
 
-    private static CheckReading value(Object value) {
-        return new CheckReading.Value(EvidenceJson.tree(value));
+    private static ObservedValue value(Object value) {
+        return new ObservedValue.Value(EvidenceJson.tree(value));
     }
 }

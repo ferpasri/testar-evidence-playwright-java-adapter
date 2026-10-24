@@ -1,105 +1,85 @@
 # Playwright Java adapter specification
 
-The adapter translates browser actions and test-oracle evaluations into records accepted by the Java evidence library. Each session creates one run and a portable evidence directory. Completed actions connect their before and resulting observations into a state-action-state execution trace. The facade reserves a unique timestamped child directory for each page, using the SUT and optional test objective labels. The explicit recorder accepts an exact directory.
+The adapter translates Playwright operations and caller-supplied test information into the shared [schema-3 evidence format](https://github.com/ferpasri/testar-evidence-specs/blob/v0.3.0/docs/evidence-format.md). The independent evidence library validates the records and writes portable files.
 
-For a walkthrough of the classes and script integration, see [How it works](how-it-works.md).
+Each page recorder owns one test run and one test sequence. They have separate identities and start events. Observations and executions belong to that sequence. The sequence finishes before its parent run. A facade session can create independent page traces; those browser sessions and test runs are different concepts.
 
-## Components
+## Java API
 
-| Component | Responsibility |
+`EvidencePlaywright.create()` returns delegating implementations of Playwright's public interfaces. Use the adapter's `EvidenceAssertions.assertThat` static import for automatic final assertion results. Pages, frames, locators, element handles, keyboard, mouse, touch objects, callbacks, and popup pages retain their native behavior. Supported operations record automatically; reads, waits, JavaScript evaluation, and trial operations retain their original purpose.
+
+| API | Purpose |
 | --- | --- |
-| `EvidencePlaywright` / `EvidenceOptions` | Create recording Playwright interfaces and configure trace locations and descriptions. |
-| `EvidenceAssertions` | Provide the assertion import for automatic final-outcome recording. |
-| `FacadeRuntime` / `FacadeActions` / `FacadeAssertions` / `FacadeValues` | Delegate native calls, identify supported recording boundaries, and describe arguments and readings. |
-| `PlaywrightEvidence` | Own the evidence writer, action lifecycle, ordered observations, and run ending. |
-| `PlaywrightChecks` | Run an assertion once through its existing retry mechanism and report its final outcome and reading. |
-| `CaptureOptions` | Select capture bounds, computed styles, excluded attributes, and screenshots. |
-| `DomCapture` / `BrowserSnapshot` | Read browser data and map the captured hierarchy to generic widgets. |
+| `PlaywrightEvidence.start(directory, page, ...)` | Start a page recorder with one run and one sequence. |
+| `EvidencePlaywright.evidenceFor(page)` | Access the recorder already used by the facade. |
+| `capture()` / `observe()` | Capture a buffered observation / write an additional observation. |
+| `recordAvailableActions(actions, scope)` | Capture caller-reported choices with an explicit `AvailableActionScope`. |
+| `selectAction(type, name, locator, parameters, availableAction)` | Record selection before the caller's native execution. |
+| `reportActionResult(ActionOutcome.RETURNED)` / `reportActionResult(ActionOutcome.ERROR, message)` | Record the operation's actual outcome. |
+| `perform(type, name, locator, parameters, operation, availableAction)` | Execute and record one action or compound action. |
+| `checks().evaluate(...)` | Run one oracle with an observed-value supplier and optional severity. |
+| `checks().recordResult(...)` | Record an existing result, with optional detailed target, values, oracle details, and severity. |
+| `finish(reason)` | Flush buffered records and finish sequence and run. |
 
-The caller owns the Playwright page and browser. Calls use the same thread as the page. The evidence library validates events, saves JSONL, and manages screenshot artifacts.
+Overloads omit the optional available action or severity. `AvailableAction.description()` returns its generic action description. Explicit reports use `Oracle`, `OracleStatus`, `ObservedValue`, `ExpectedValue`, and `OracleSeverity` from `org.testar.evidence`. `ExpectedValue.unspecified()` omits an expectation; `ExpectedValue.of(null)` supplies JSON null. An omitted severity stays absent. `checks().recordingError()` exposes a recording failure from the latest evaluation. Use the recorder on its Playwright thread.
 
-## Automatic recording
+Ordinary Java assertions and external oracle callbacks use the explicit API. API-response assertions delegate independently of GUI observations. See [How it works](how-it-works.md) for the components and an integration example.
 
-`EvidencePlaywright.create()` returns Playwright's public interfaces through delegating wrappers. Pages, frames, locators, element handles, keyboard, mouse, and touchscreen objects obtained through them keep recording support. Native return values and operation exceptions are retained. Locator arguments, nested locator options, callback arguments, and popup pages are passed between the wrapper and native API as appropriate. Removing an event callback uses the same native callback that was registered.
+## Recording an action
 
-The facade records navigation, history changes, reload, content/viewport/media changes, clicks, filling and typing, checking, selection, file inputs, dragging, focus, scrolling, dispatching events, and keyboard/mouse/touch interactions. Trial interactions remain readiness checks. Reads, waits, and JavaScript evaluation delegate without becoming action records. Actions performed inside a recorded action callback belong to that outer boundary.
+The recorder captures the source observation when needed, records the selected action, and delegates the operation to Playwright. A normal return produces an action execution result with outcome `returned`. An exception produces outcome `error`, retains the reported message, and reaches the original caller. A business response such as a denied loan belongs to the captured application state; an oracle decides whether that response meets its condition.
 
-Use `EvidenceAssertions.assertThat` for automatic GUI assertion recording, including `not()`. The native assertion runs with its usual retries and timeout. One final result is recorded. Page URL/title, text/value, attribute, CSS, JavaScript-property, class/id, and supported boolean assertions include a subsequent reading. Collection assertions use observation-level targets. Other assertion methods record their outcome with an unknown reading when a concrete reading is unavailable. API-response assertions delegate to Playwright independently of GUI observations.
+A later capture in the same sequence supplies the resulting observation. The recorder then writes a recorded transition connecting the source observation, execution, and resulting observation. An error has no completed transition. Ending without an execution result or resulting observation leaves the execution incomplete.
 
-`EvidencePlaywright.evidenceFor(page)` exposes the recorder for custom action and oracle integration. Explicit `perform` and `checks().evaluate` callbacks suppress nested automatic recording, keeping one caller-defined boundary. Ordinary Java assertions, assertions from other libraries, and tool-specific oracle callbacks use this explicit integration.
+The latest capture can remain buffered until the next action is known. Its observation then contains that available action and can serve as both the previous action's result and the next action's source. Buffered observations are separate from pending oracle statuses. Repeated captures remain distinct observations even when their contents match.
 
-The facade starts a recorder on the first recorded operation or `evidenceFor` call. It captures the resulting page after each successful automatic action. Closing a page, its context, browser, or Playwright flushes evidence before native cleanup. An externally closed or crashed page flushes available cached records. Cleanup still attempts native closure when evidence writing fails. Use each facade session on the thread where it was created.
+## Available actions and compound actions
 
-## Run metadata
+`AvailableAction` describes an operation reported by the caller: action type, name, optional locator, and planning parameters. The recorder saves an action description and a binding to the captured widget when identifiable. Unexecuted choices remain recorded. Actual generated input belongs to the action execution parameters rather than its planning description.
 
-The optional `origin` is a descriptive name for the calling tool, script, or integration. It accepts any nonblank source name. The optional test objective describes what the caller intends to investigate or verify. Both values retain their original text, including Unicode and spacing; omitted values stay absent.
+The reported scope is generated, eligible under the caller's selection rules, or unknown. An explicitly empty eligible list keeps that meaning. The facade reports its next selected operation with unknown scope; the caller can report a richer list through the explicit API.
 
-The adapter records the [shared run metadata](https://github.com/ferpasri/testar-evidence-specs/blob/main/docs/run-metadata.md) once in run properties:
+Passing a reported available action when selecting or performing it connects the execution to that description. A choice absent from the reported list is rejected before its callback runs. A callback containing several native operations forms one compound action. Automatic records inside that boundary are suppressed.
 
-| Property | Recorded value |
-| --- | --- |
-| `evidence.origin` | The caller's origin, when supplied. |
-| `evidence.test_objective` | The caller's test objective, when supplied. |
-| `evidence.adapter` | This adapter's identifier, supplied automatically. |
-| `evidence.adapter_version` | This adapter's version, supplied automatically. |
+## Oracle results
 
-The required `producer` identifies the producing component. Origin identifies the caller independently; one source can perform predefined setup and then explore. The test objective describes intent. Check results identify the conditions actually evaluated and their outcomes. Candidate scope describes the reported candidate list.
+The adapter's assertion facade delegates retries and timeouts to Playwright and records one final result. Its explicit checks helper can run a custom oracle or record a result already obtained by the caller. Recording an existing result does not run the oracle again.
 
-`EvidenceOptions` configures these descriptions for facade pages. For explicit integration, `start(directory, page, origin, testObjective)` accepts the optional descriptions. `start(directory, page, options, origin, testObjective)` also accepts capture settings. Existing overloads omit both descriptions. A supplied blank description is rejected before creating the trace.
+Passed means the assertion returned normally; failed means an assertion failure; error means another evaluation exception. Custom reports can also supply pending or unknown status. The recorder preserves the reported status. Optional oracle severity retains the caller's label and numeric value without assigning a default or changing the status.
+
+Oracle results identify the oracle, target, status, optional expected and observed values, and oracle details. An omitted expectation differs from a supplied JSON null. Observed values distinguish a value, established absence, and unknown information. A missing DOM attribute is established as absent only when the attribute API supplies that evidence.
+
+Mapped assertions target a captured state property, widget, or widget property. Collection assertions target the observation. If a locator cannot identify a captured widget, the result targets the observation and retains the requested target and resolution limit in oracle details. Such a result does not establish individual property coverage.
+
+Readings follow assertion execution and precede capture. These are separate browser operations and can observe application changes. An unavailable reading becomes unknown with its explanation. An original oracle failure is rethrown; an additional persistence failure remains available through the helper's recording-error information.
 
 ## Captured data
 
-The adapter captures the document root, DOM elements, and elements in open shadow roots. Widget IDs derive from structural paths and are interpreted within their observation. The scope is filtered: frame documents are excluded and closed shadow roots are not observable.
+Capture includes the document, DOM elements, and open shadow roots. Frame documents and closed shadow roots have explicit capture limitations. Widget IDs and structural paths identify elements within an observation; cross-observation equivalence is decided by a consumer's abstraction rules.
 
-State properties retain the full `playwright.document.url` and actual `playwright.document.title`, with equal-value aliases `ui.url` and `ui.title`.
+State properties retain the actual document address and title under `playwright.document.url` and `playwright.document.title`, with same-record aliases `ui.url` and `ui.title`. Widgets retain attributes under `playwright.attribute.*`, live DOM values under `playwright.dom.*`, bounds, and selected styles under `playwright.style.*`. A title attribute, text content, and accessible-label attribute keep their distinct source meanings.
 
-Widgets retain DOM attributes under `playwright.attribute.<name>`, raw text content and selected live DOM values under `playwright.dom.*`, bounds, and selected computed styles under `playwright.style.<name>`. An HTML value attribute and the live input value retain separate keys. A widget title attribute, visible text, and accessible-label attribute retain their own meanings.
+`evidence.capture` describes widget/property selection, limits, and truncation. `evidence.omitted_properties` records known exclusions, redactions, and unavailable values. `evidence.property_aliases` declares equivalent names within the same record. Missing captured data alone does not establish that a property is absent from the application or that no oracle ran.
 
-Common aliases include raw `ui.text`, explicit-attribute `ui.role` and `ui.alt`, live `ui.value`/`ui.checked`/`ui.selected`, and `ui.bounds`. `evidence.property_aliases` identifies the original property within the same record.
-
-`evidence.capture` describes the area, widget/property selection, limits, and known truncation. `evidence.omitted_properties` records whole-property exclusions, limits, redactions, unsupported values, and unavailable readings when known. Omission metadata retains up to 32 entries per widget; counts describe additional omissions. A missing captured property alone does not establish application-level absence.
-
-| Capture option | Default | Maximum |
+| Capture limit | Default | Maximum |
 | --- | ---: | ---: |
 | Widgets, including document root | 2,000 | 5,000 |
-| Characters per widget string value | 8,192 | 65,536 |
-| Selected widget-property character budget | 4,194,304 | 8,388,608 |
-| Attributes considered per widget | 256 | 1,024 |
+| Characters per widget string | 8,192 | 65,536 |
+| Selected property character budget | 4,194,304 | 8,388,608 |
+| Attributes per widget | 256 | 1,024 |
 
-The character budget counts selected property names and JSON-serialized values, including aliases. Structural paths, capture descriptions, and bounded omission metadata are stored separately. Oversized string values are omitted whole.
+The property budget counts selected names and JSON-serialized values, including aliases. Oversized strings are omitted whole. Bounded omission descriptions and structural paths are stored separately. Callers can select up to 64 computed styles and exclude up to 256 attributes. Default styles are display, visibility, font size, font family, color, and background color. Screenshots are optional viewport PNGs.
 
-Default computed styles are display, visibility, font size, font family, color, and background color. Callers can select up to 64 styles and exclude up to 256 attribute names. Password input values and their value attributes are redacted explicitly. Screenshots are viewport PNGs and can be disabled through the capture options.
+Password values and supported secret input arguments are redacted. Automatic value assertions with password or unresolved targets withhold sensitive expected/observed values and saved error details. Native calls still receive their original arguments and raise their original exceptions. Authors of custom reports choose the data they supply; capture settings also apply to the surrounding application data and screenshots.
 
-## Observations and execution links
+## Run metadata
 
-A snapshot is captured before an action when needed, after each successful automatic action, after an assertion has finished, and for an explicit `observe` call. Capture and screenshot requests are successive browser operations. The test controls application readiness; the capture describes the observed moment.
+Optional origin and test objective descriptions are stored in run properties as `evidence.origin` and `evidence.test_objective`. The adapter supplies `evidence.adapter` and `evidence.adapter_version`. Descriptions retain Unicode and spacing; omitted descriptions remain absent. Origin is descriptive text rather than a fixed execution-style category.
 
-The recorder keeps the latest captured observation pending until the next action is known or the session finishes. It then records that observation with the next reported action as its candidate, followed by any queued evaluation. This allows an action's result observation to become the next action's source without adding an artificial execution.
+## Storage and verification
 
-Candidate scope is unknown: the list describes the next reported action and does not enumerate alternative interactions. An explicit observation or terminal visit can have an empty list.
+A trace contains `manifest.json`, `evidence.jsonl`, and referenced screenshot files in `artifacts/`. Creation preserves existing evidence by refusing an existing manifest or log. The evidence library validates event references and lifecycle order, retains complete payloads, and verifies artifact hashes.
 
-Actions retain their kind, description, locator description, and actual parameters. A locator binds through its captured DOM path; a missing, ambiguous, excluded, or frame target keeps the locator description and an unspecified widget binding. Custom macros submitted through `perform` are one outer action.
+Closing a page, context, browser, or facade session finishes the corresponding recorder. An unavailable page is finished from its cached captures, without inventing a result observation. Successfully saved prefixes remain readable after later failures.
 
-Selection is recorded before the action callback. A normal return records accepted submission; an action exception records rejected submission with its error and is rethrown. Acceptance describes the execution wrapper's outcome. A business response such as Denied appears in the resulting observation and is evaluated separately.
-
-The next captured observation completes an accepted execution. Consecutive assertions produce distinct observations without inventing action links. Two captures with the same content remain separate visits.
-
-## Test-oracle evaluations
-
-`hasText`, `hasValue`, and `hasAttribute` use Playwright's native retrying assertions. Rule parameters identify the comparison and timeout. For example, `hasText` keeps Playwright's whitespace handling while the reported text reading retains the raw final value.
-
-Each helper records one final evaluation. Passed means the assertion returned normally; failed means it threw an assertion failure; error means its execution threw another runtime exception. The original failure is rethrown after reporting. Persistence failures are propagated or attached to an existing assertion failure.
-
-The reading is obtained after the assertion, followed by the state capture. Readings and capture are separate observations of the browser in time and can differ if the application changes between calls. A failed reading becomes unknown with its error details. An absent attribute reading comes from the DOM attribute API returning no value.
-
-`checks().evaluate` accepts an existing assertion, rule/version/parameters, expected-value presence, property name, locator, and reading supplier. Supplied JSON null expectations remain distinct from omitted expectations. Detailed targets identify the captured widget and literal property key; an unavailable widget target retains an observation-level result with the requested target and explanation.
-
-The facade withholds text-entry arguments for password or unresolved targets and withholds their native action-error details. Automatic checks on password inputs withhold expectations, readings, and error details; value-related checks also do this for unresolved targets. Counts, text lists, and presence checks retain their available readings. The original native exception still reaches the caller. Custom action and oracle authors choose their recorded parameters, expectations, and readings. Redaction covers these input and check values; other supplied or captured application data follows the configured capture policy.
-
-## Ending and persistence
-
-`finish(reason)` flushes the final observation, outstanding result link, and evaluations, then saves the run ending. It is idempotent. Closing an unfinished session also flushes its pending records and records closed, action_failed, or check_failed according to the known session outcome. The caller can provide an explicit ending reason.
-
-New model creation preserves existing evidence by refusing an existing manifest or log. Successfully appended events remain readable if a later operation fails. The caller keeps the session open until its scripted operations and assertions finish.
-
-Abstraction and cross-source matching are performed by consumers of the concrete evidence.
+Unit and controlled local browser tests cover native delegation, final assertion outcomes, optional metadata, available actions, compound actions, execution errors, precise oracle targets, severity, password redaction, capture limits, callbacks, and reopening the produced traces. Abstraction remains separate from these recorded traces.

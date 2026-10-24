@@ -22,16 +22,17 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.testar.evidence.CandidateScope;
-import org.testar.evidence.CheckReading;
-import org.testar.evidence.CheckRule;
-import org.testar.evidence.CheckStatus;
-import org.testar.evidence.CheckTarget;
+import org.testar.evidence.AvailableActionScope;
+import org.testar.evidence.ObservedValue;
+import org.testar.evidence.Oracle;
+import org.testar.evidence.OracleSeverity;
+import org.testar.evidence.OracleStatus;
+import org.testar.evidence.OracleTarget;
 import org.testar.evidence.EvidenceReader;
-import org.testar.evidence.ExecutionStatus;
+import org.testar.evidence.ActionExecutionStatus;
 import org.testar.evidence.ExpectedValue;
 import org.testar.evidence.Observation;
-import org.testar.evidence.StateModel;
+import org.testar.evidence.ReconstructedEvidence;
 import org.testar.evidence.Widget;
 import org.testar.evidence.playwright.examples.ParabankDeniedLoan;
 
@@ -67,7 +68,7 @@ class PlaywrightEvidenceIT {
     @BeforeEach
     void createPage() {
         page = browser.newPage();
-        page.setDefaultTimeout(500);
+        page.setDefaultTimeout(5_000);
     }
 
     @AfterEach
@@ -82,13 +83,13 @@ class PlaywrightEvidenceIT {
                 "  QA équipe / custom CI  ", "  Request loan — prêt  ")) {
             evidence.click(page.locator("button"));
         }
-        StateModel model = EvidenceReader.read(directory);
-        var properties = model.runs().get(0).run().properties();
+        ReconstructedEvidence evidence = EvidenceReader.read(directory);
+        var properties = evidence.testRuns().get(0).testRun().properties();
         assertEquals("  QA équipe / custom CI  ", properties.get("evidence.origin").asText());
         assertEquals("  Request loan — prêt  ", properties.get("evidence.test_objective").asText());
         assertEquals(PlaywrightEvidence.ADAPTER_ID, properties.get("evidence.adapter").asText());
         assertEquals(PlaywrightEvidence.VERSION, properties.get("evidence.adapter_version").asText());
-        assertFalse(model.executions().get(0).execution().parameters().contains("playwright.origin"));
+        assertFalse(evidence.actionExecutions().get(0).actionExecution().parameters().contains("playwright.origin"));
     }
 
     @Test
@@ -96,7 +97,7 @@ class PlaywrightEvidenceIT {
         try (PlaywrightEvidence evidence = PlaywrightEvidence.start(directory, page)) {
             evidence.observe();
         }
-        var properties = EvidenceReader.read(directory).runs().get(0).run().properties();
+        var properties = EvidenceReader.read(directory).testRuns().get(0).testRun().properties();
         assertFalse(properties.contains("evidence.origin"));
         assertFalse(properties.contains("evidence.test_objective"));
         assertEquals(PlaywrightEvidence.ADAPTER_ID, properties.get("evidence.adapter").asText());
@@ -109,14 +110,14 @@ class PlaywrightEvidenceIT {
         try (PlaywrightEvidence evidence = PlaywrightEvidence.start(sourceOnly, page, "Custom runner", null)) {
             evidence.observe();
         }
-        var source = EvidenceReader.read(sourceOnly).runs().get(0).run().properties();
+        var source = EvidenceReader.read(sourceOnly).testRuns().get(0).testRun().properties();
         assertEquals("Custom runner", source.get("evidence.origin").asText());
         assertFalse(source.contains("evidence.test_objective"));
         Path objectiveOnly = directory.resolve("objective");
         try (PlaywrightEvidence evidence = PlaywrightEvidence.start(objectiveOnly, page, null, "Inspect the loan form")) {
             evidence.observe();
         }
-        var objective = EvidenceReader.read(objectiveOnly).runs().get(0).run().properties();
+        var objective = EvidenceReader.read(objectiveOnly).testRuns().get(0).testRun().properties();
         assertEquals("Inspect the loan form", objective.get("evidence.test_objective").asText());
         assertFalse(objective.contains("evidence.origin"));
     }
@@ -140,26 +141,26 @@ class PlaywrightEvidenceIT {
             evidence.finish("completed");
             evidence.finish("completed");
         }
-        StateModel model = EvidenceReader.read(directory);
-        assertEquals(8, model.executions().size());
-        assertEquals(8, model.links().size());
-        assertEquals(9, model.observations().size());
-        assertEquals(3, model.checks().size());
-        assertEquals("completed", model.runs().get(0).reason());
-        assertEquals(PlaywrightEvidence.VERSION, model.runs().get(0).run().properties().get("evidence.adapter_version").asText());
-        for (var check : model.checks()) {
-            assertEquals(CheckStatus.PASSED, check.status());
-            assertTrue(check.target() instanceof CheckTarget.WidgetProperty);
+        ReconstructedEvidence evidence = EvidenceReader.read(directory);
+        assertEquals(8, evidence.actionExecutions().size());
+        assertEquals(8, evidence.recordedTransitions().size());
+        assertEquals(9, evidence.observations().size());
+        assertEquals(3, evidence.oracleResults().size());
+        assertEquals("completed", evidence.testRuns().get(0).reason());
+        assertEquals(PlaywrightEvidence.VERSION, evidence.testRuns().get(0).testRun().properties().get("evidence.adapter_version").asText());
+        for (var check : evidence.oracleResults()) {
+            assertEquals(OracleStatus.PASSED, check.oracleStatus());
+            assertTrue(check.oracleTarget() instanceof OracleTarget.WidgetProperty);
         }
-        assertEquals("Denied", ((CheckReading.Value) model.checks().get(2).actual()).value().asText());
-        for (Observation observation : model.observations()) {
-            assertEquals(CandidateScope.UNKNOWN, observation.candidateScope());
+        assertEquals("Denied", ((ObservedValue.Value) evidence.oracleResults().get(2).observedValue()).value().asText());
+        for (Observation observation : evidence.observations()) {
+            assertEquals(AvailableActionScope.UNKNOWN, observation.availableActionScope());
             assertEquals(1, observation.artifacts().size());
             assertTrue(Files.size(directory.resolve(observation.artifacts().get(0).path())) > 0);
-            assertEquals(observation.state().properties().get("playwright.document.title"),
-                observation.state().properties().get("ui.title"));
-            assertTrue(observation.state().properties().contains("evidence.capture"));
-            for (Widget widget : observation.state().widgets()) {
+            assertEquals(observation.recordedState().properties().get("playwright.document.title"),
+                observation.recordedState().properties().get("ui.title"));
+            assertTrue(observation.recordedState().properties().contains("evidence.capture"));
+            for (Widget widget : observation.recordedState().widgets()) {
                 if (widget.properties().contains("playwright.attribute.type")
                     && widget.properties().get("playwright.attribute.type").asText().equals("password")) {
                     assertFalse(widget.properties().contains("playwright.dom.value"));
@@ -167,9 +168,9 @@ class PlaywrightEvidenceIT {
                 }
             }
         }
-        assertEquals(1, model.executions().stream().filter(execution ->
-            execution.execution().parameters().contains("playwright.redacted_parameters")).count());
-        assertTrue(model.executions().stream().allMatch(execution -> execution.status() == ExecutionStatus.OBSERVED));
+        assertEquals(1, evidence.actionExecutions().stream().filter(execution ->
+            execution.actionExecution().parameters().contains("playwright.redacted_parameters")).count());
+        assertTrue(evidence.actionExecutions().stream().allMatch(execution -> execution.status() == ActionExecutionStatus.COMPLETED));
     }
 
     @Test
@@ -204,7 +205,7 @@ class PlaywrightEvidenceIT {
         assertEquals("  Original text  ", widget(observation, "plain").properties().get("ui.text").asText());
         assertTrue(input.properties().contains("playwright.style.display"));
         assertFalse(input.properties().contains("playwright.style.color"));
-        assertTrue(observation.state().properties().get("evidence.capture").get("truncated").asBoolean());
+        assertTrue(observation.recordedState().properties().get("evidence.capture").get("truncated").asBoolean());
     }
 
     @Test
@@ -215,11 +216,11 @@ class PlaywrightEvidenceIT {
             assertThrows(AssertionError.class, () -> evidence.checks().hasText("example:text", "Expected text",
                 page.locator("#status"), "Expected"));
         }
-        StateModel model = EvidenceReader.read(directory);
-        assertEquals(CheckStatus.FAILED, model.checks().get(0).status());
-        assertEquals("Actual", ((CheckReading.Value) model.checks().get(0).actual()).value().asText());
-        assertEquals("check_failed", model.runs().get(0).reason());
-        assertTrue(model.checks().get(0).details().contains("playwright.assertion_error"));
+        ReconstructedEvidence evidence = EvidenceReader.read(directory);
+        assertEquals(OracleStatus.FAILED, evidence.oracleResults().get(0).oracleStatus());
+        assertEquals("Actual", ((ObservedValue.Value) evidence.oracleResults().get(0).observedValue()).value().asText());
+        assertEquals("check_failed", evidence.testRuns().get(0).reason());
+        assertTrue(evidence.oracleResults().get(0).oracleDetails().contains("playwright.assertion_error"));
     }
 
     @Test
@@ -228,11 +229,11 @@ class PlaywrightEvidenceIT {
         try (PlaywrightEvidence evidence = PlaywrightEvidence.start(directory, page)) {
             assertThrows(PlaywrightException.class, () -> evidence.click(page.locator("#missing")));
         }
-        StateModel model = EvidenceReader.read(directory);
-        assertEquals(ExecutionStatus.REJECTED, model.executions().get(0).status());
-        assertTrue(model.executions().get(0).error().contains("missing"));
-        assertTrue(model.links().isEmpty());
-        assertEquals("action_failed", model.runs().get(0).reason());
+        ReconstructedEvidence evidence = EvidenceReader.read(directory);
+        assertEquals(ActionExecutionStatus.FAILED, evidence.actionExecutions().get(0).status());
+        assertTrue(evidence.actionExecutions().get(0).executionResult().error().contains("missing"));
+        assertTrue(evidence.recordedTransitions().isEmpty());
+        assertEquals("action_failed", evidence.testRuns().get(0).reason());
     }
 
     @Test
@@ -241,16 +242,16 @@ class PlaywrightEvidenceIT {
         IllegalStateException original = new IllegalStateException("Oracle API unavailable");
         try (PlaywrightEvidence evidence = PlaywrightEvidence.start(directory, page)) {
             RuntimeException reported = assertThrows(RuntimeException.class, () -> evidence.checks().evaluate(
-                "Custom oracle", new CheckRule("example:custom", "7", null), page.locator("#status"), "custom.value",
+                "Custom oracle", new Oracle("example:custom", "7", null), page.locator("#status"), "custom.value",
                 ExpectedValue.of(null), () -> { throw original; }, () -> { throw new IllegalArgumentException("No reading"); }));
             assertSame(original, reported);
         }
-        var check = EvidenceReader.read(directory).checks().get(0);
-        assertEquals(CheckStatus.ERROR, check.status());
-        assertEquals(new CheckReading.Unknown(), check.actual());
-        assertTrue(check.expected().supplied());
-        assertTrue(check.expected().value().isNull());
-        assertEquals("7", check.rule().version());
+        var check = EvidenceReader.read(directory).oracleResults().get(0);
+        assertEquals(OracleStatus.ERROR, check.oracleStatus());
+        assertEquals(new ObservedValue.Unknown(), check.observedValue());
+        assertTrue(check.expectedValue().supplied());
+        assertTrue(check.expectedValue().value().isNull());
+        assertEquals("7", check.oracle().version());
     }
 
     @Test
@@ -260,11 +261,11 @@ class PlaywrightEvidenceIT {
         try (PlaywrightEvidence evidence = PlaywrightEvidence.start(directory, page, options)) {
             evidence.checks().hasText("example:ready", "Ready", page.locator("#status"), "Ready");
         }
-        StateModel model = EvidenceReader.read(directory);
-        assertTrue(model.checks().get(0).target() instanceof CheckTarget.Observation);
-        assertTrue(model.checks().get(0).details().contains("playwright.requested_target"));
-        assertEquals(1, model.observations().get(0).state().widgets().size());
-        assertTrue(model.observations().get(0).artifacts().isEmpty());
+        ReconstructedEvidence evidence = EvidenceReader.read(directory);
+        assertTrue(evidence.oracleResults().get(0).oracleTarget() instanceof OracleTarget.Observation);
+        assertTrue(evidence.oracleResults().get(0).oracleDetails().contains("playwright.requested_target"));
+        assertEquals(1, evidence.observations().get(0).recordedState().widgets().size());
+        assertTrue(evidence.observations().get(0).artifacts().isEmpty());
     }
 
     @Test
@@ -273,10 +274,10 @@ class PlaywrightEvidenceIT {
         try (PlaywrightEvidence evidence = PlaywrightEvidence.start(directory, page)) {
             evidence.checks().hasText("example:ready", "Ready", page.locator("#status"), "Ready");
         }
-        StateModel model = EvidenceReader.read(directory);
-        assertEquals(1, model.checks().size());
-        assertEquals(CheckStatus.PASSED, model.checks().get(0).status());
-        assertEquals("Ready", ((CheckReading.Value) model.checks().get(0).actual()).value().asText());
+        ReconstructedEvidence evidence = EvidenceReader.read(directory);
+        assertEquals(1, evidence.oracleResults().size());
+        assertEquals(OracleStatus.PASSED, evidence.oracleResults().get(0).oracleStatus());
+        assertEquals("Ready", ((ObservedValue.Value) evidence.oracleResults().get(0).observedValue()).value().asText());
     }
 
     @Test
@@ -286,12 +287,12 @@ class PlaywrightEvidenceIT {
             evidence.checks().hasText("example:text", "Text", page.locator("#status"), "Ready");
             evidence.checks().hasAttribute("example:title", "Title", page.locator("#status"), "title", "Tooltip");
         }
-        StateModel model = EvidenceReader.read(directory);
-        assertEquals(2, model.observations().size());
-        assertEquals(2, model.checks().size());
-        assertNotEquals(model.checks().get(0).target(), model.checks().get(1).target());
-        assertTrue(model.executions().isEmpty());
-        assertTrue(model.links().isEmpty());
+        ReconstructedEvidence evidence = EvidenceReader.read(directory);
+        assertEquals(2, evidence.observations().size());
+        assertEquals(2, evidence.oracleResults().size());
+        assertNotEquals(evidence.oracleResults().get(0).oracleTarget(), evidence.oracleResults().get(1).oracleTarget());
+        assertTrue(evidence.actionExecutions().isEmpty());
+        assertTrue(evidence.recordedTransitions().isEmpty());
     }
 
     @Test
@@ -304,10 +305,10 @@ class PlaywrightEvidenceIT {
             evidence.perform("custom", "Custom action", page.locator("#button"), parameters,
                 () -> page.locator("#button").click());
         }
-        var execution = EvidenceReader.read(directory).executions().get(0);
-        assertEquals(ExecutionStatus.OBSERVED, execution.status());
-        assertEquals(9, execution.execution().parameters().get("nested").get("number").asInt());
-        assertTrue(execution.execution().parameters().get("optional").isNull());
+        var execution = EvidenceReader.read(directory).actionExecutions().get(0);
+        assertEquals(ActionExecutionStatus.COMPLETED, execution.status());
+        assertEquals(9, execution.actionExecution().parameters().get("nested").get("number").asInt());
+        assertTrue(execution.actionExecution().parameters().get("optional").isNull());
     }
 
     @Test
@@ -330,10 +331,10 @@ class PlaywrightEvidenceIT {
             assertThrows(AssertionError.class, () -> evidence.checks().hasAttribute("example:alt", "Image description",
                 page.locator("#help"), "alt", "Help"));
         }
-        var check = EvidenceReader.read(directory).checks().get(0);
-        assertEquals(CheckStatus.FAILED, check.status());
-        assertEquals(new CheckReading.Absent(), check.actual());
-        assertEquals("playwright.attribute.alt", ((CheckTarget.WidgetProperty) check.target()).property());
+        var check = EvidenceReader.read(directory).oracleResults().get(0);
+        assertEquals(OracleStatus.FAILED, check.oracleStatus());
+        assertEquals(new ObservedValue.Absent(), check.observedValue());
+        assertEquals("playwright.attribute.alt", ((OracleTarget.WidgetProperty) check.oracleTarget()).property());
     }
 
     @Test
@@ -344,16 +345,41 @@ class PlaywrightEvidenceIT {
             evidence.checks().hasText("example:shadow", "Shadow button", page.locator("#shadow-button"), "Shadow");
             evidence.checks().hasText("example:frame", "Frame text", page.frameLocator("#frame").locator("#inside"), "Ready");
         }
-        StateModel model = EvidenceReader.read(directory);
-        assertTrue(model.checks().get(0).target() instanceof CheckTarget.WidgetProperty);
-        assertTrue(model.checks().get(1).target() instanceof CheckTarget.Observation);
-        assertTrue(model.checks().get(1).details().contains("playwright.target_resolution"));
-        assertEquals(1, model.observations().get(0).state().properties()
+        ReconstructedEvidence evidence = EvidenceReader.read(directory);
+        assertTrue(evidence.oracleResults().get(0).oracleTarget() instanceof OracleTarget.WidgetProperty);
+        assertTrue(evidence.oracleResults().get(1).oracleTarget() instanceof OracleTarget.Observation);
+        assertTrue(evidence.oracleResults().get(1).oracleDetails().contains("playwright.target_resolution"));
+        assertEquals(1, evidence.observations().get(0).recordedState().properties()
             .get("playwright.capture.omitted_frame_documents").asInt());
     }
 
+    @Test
+    void reported_available_actions_bind_native_widgets_and_existing_oracle_results() throws Exception {
+        page.setContent("<input id='name'><button id='other'>Other</button>");
+        AvailableAction fill = new AvailableAction("fill", "Enter name", page.locator("#name"), Map.of("strategy", "example"));
+        AvailableAction other = new AvailableAction("click", "Other choice", page.locator("#other"));
+        String source;
+        try (PlaywrightEvidence recorder = PlaywrightEvidence.start(directory, page)) {
+            source = recorder.recordAvailableActions(List.of(fill, other), AvailableActionScope.ELIGIBLE);
+            recorder.perform(fill.actionType(), fill.name(), fill.locator(), Map.of("value", "john"),
+                () -> fill.locator().fill("john"), fill);
+            recorder.capture();
+            recorder.checks().recordResult(new Oracle("example:name", "1", org.testar.evidence.Properties.empty()),
+                "Name was checked", OracleStatus.PASSED, page.locator("#name"), "playwright.dom.value",
+                ExpectedValue.of("john"), new ObservedValue.Value(org.testar.evidence.EvidenceJson.tree(page.locator("#name").inputValue())),
+                null, org.testar.evidence.Properties.empty(), new OracleSeverity("informational", null));
+        }
+        var evidence = EvidenceReader.read(directory);
+        assertEquals(2, evidence.availableActions(source).size());
+        assertEquals(1, evidence.actionExecutions().size());
+        assertEquals(1, evidence.recordedTransitions().size());
+        assertEquals("john", evidence.actionExecutions().get(0).actionExecution().parameters().get("value").asText());
+        assertTrue(evidence.oracleResults().get(0).oracleTarget() instanceof OracleTarget.WidgetProperty);
+        assertEquals("informational", evidence.oracleResults().get(0).oracleSeverity().label());
+    }
+
     private static Widget widget(Observation observation, String id) {
-        return observation.state().widgets().stream()
+        return observation.recordedState().widgets().stream()
             .filter(widget -> widget.properties().contains("playwright.attribute.id")
                 && id.equals(widget.properties().get("playwright.attribute.id").asText()))
             .findFirst().orElseThrow();

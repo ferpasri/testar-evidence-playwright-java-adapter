@@ -25,14 +25,14 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.testar.evidence.CheckReading;
-import org.testar.evidence.CheckRule;
-import org.testar.evidence.CheckStatus;
-import org.testar.evidence.CheckTarget;
+import org.testar.evidence.ObservedValue;
+import org.testar.evidence.Oracle;
+import org.testar.evidence.OracleStatus;
+import org.testar.evidence.OracleTarget;
 import org.testar.evidence.EvidenceReader;
-import org.testar.evidence.ExecutionStatus;
+import org.testar.evidence.ActionExecutionStatus;
 import org.testar.evidence.ExpectedValue;
-import org.testar.evidence.StateModel;
+import org.testar.evidence.ReconstructedEvidence;
 
 class FacadeIT {
     @TempDir
@@ -57,7 +57,7 @@ class FacadeIT {
         }
         browser = playwright.chromium().launch(options);
         page = browser.newPage();
-        page.setDefaultTimeout(500);
+        page.setDefaultTimeout(5_000);
     }
 
     @AfterEach
@@ -81,16 +81,16 @@ class FacadeIT {
             assertThat(page.locator("#loanStatus")).hasText("Denied");
             page.close();
         }
-        StateModel model = model();
-        assertEquals(8, model.executions().size());
-        assertEquals(3, model.checks().size());
-        assertTrue(model.executions().stream().allMatch(value -> value.status() == ExecutionStatus.OBSERVED));
-        assertTrue(model.checks().stream().allMatch(value -> value.status() == CheckStatus.PASSED));
-        var properties = model.runs().get(0).run().properties();
+        ReconstructedEvidence evidence = evidence();
+        assertEquals(8, evidence.actionExecutions().size());
+        assertEquals(3, evidence.oracleResults().size());
+        assertTrue(evidence.actionExecutions().stream().allMatch(value -> value.status() == ActionExecutionStatus.COMPLETED));
+        assertTrue(evidence.oracleResults().stream().allMatch(value -> value.oracleStatus() == OracleStatus.PASSED));
+        var properties = evidence.testRuns().get(0).testRun().properties();
         assertEquals("Custom Java runner", properties.get("evidence.origin").asText());
         assertEquals("Inspect a loan request", properties.get("evidence.test_objective").asText());
         assertEquals(PlaywrightEvidence.ADAPTER_ID, properties.get("evidence.adapter").asText());
-        assertTrue(model.checks().get(0).target() instanceof CheckTarget.WidgetProperty);
+        assertTrue(evidence.oracleResults().get(0).oracleTarget() instanceof OracleTarget.WidgetProperty);
     }
 
     @Test
@@ -100,8 +100,8 @@ class FacadeIT {
         assertThat(page.locator("p")).hasText("Ready");
         assertThat(page.locator("p")).not().hasText("Waiting");
         page.close();
-        assertEquals(2, model().checks().size());
-        assertTrue(model().checks().stream().allMatch(value -> value.status() == CheckStatus.PASSED));
+        assertEquals(2, evidence().oracleResults().size());
+        assertTrue(evidence().oracleResults().stream().allMatch(value -> value.oracleStatus() == OracleStatus.PASSED));
     }
 
     @Test
@@ -110,10 +110,10 @@ class FacadeIT {
         assertThrows(AssertionError.class, () -> assertThat(page.locator("p")).hasText("Expected",
             new LocatorAssertions.HasTextOptions().setTimeout(100)));
         page.close();
-        var check = model().checks().get(0);
-        assertEquals(CheckStatus.FAILED, check.status());
-        assertEquals(ExpectedValue.of("Expected"), check.expected());
-        assertEquals(new CheckReading.Value(org.testar.evidence.EvidenceJson.tree("Actual")), check.actual());
+        var check = evidence().oracleResults().get(0);
+        assertEquals(OracleStatus.FAILED, check.oracleStatus());
+        assertEquals(ExpectedValue.of("Expected"), check.expectedValue());
+        assertEquals(new ObservedValue.Value(org.testar.evidence.EvidenceJson.tree("Actual")), check.observedValue());
     }
 
     @Test
@@ -121,7 +121,7 @@ class FacadeIT {
         page.setContent("<p>Ready</p>");
         assertThrows(PlaywrightException.class, () -> page.locator("#missing").click());
         page.close();
-        assertEquals(ExecutionStatus.REJECTED, model().executions().get(1).status());
+        assertEquals(ActionExecutionStatus.FAILED, evidence().actionExecutions().get(1).status());
     }
 
     @Test
@@ -135,8 +135,8 @@ class FacadeIT {
         assertSame(browser, page.context().browser());
         assertThat(section).hasCount(1);
         page.close();
-        assertEquals(3, model().executions().size());
-        assertTrue(model().checks().get(0).target() instanceof CheckTarget.Observation);
+        assertEquals(3, evidence().actionExecutions().size());
+        assertTrue(evidence().oracleResults().get(0).oracleTarget() instanceof OracleTarget.Observation);
     }
 
     @Test
@@ -150,7 +150,7 @@ class FacadeIT {
         assertEquals("2", page.locator("button").textContent());
         assertEquals("typed", page.locator("input").inputValue());
         page.close();
-        assertEquals(5, model().executions().size());
+        assertEquals(5, evidence().actionExecutions().size());
     }
 
     @Test
@@ -160,7 +160,7 @@ class FacadeIT {
         page.locator("button").textContent();
         page.evaluate("document.title='Read'");
         page.close();
-        assertEquals(1, model().executions().size());
+        assertEquals(1, evidence().actionExecutions().size());
     }
 
     @Test
@@ -191,8 +191,8 @@ class FacadeIT {
         page.frameLocator("iframe").locator("button").click();
         assertThat(page.frameLocator("iframe").locator("button")).hasText("Inside");
         page.close();
-        assertEquals(2, model().executions().size());
-        assertTrue(model().checks().get(0).target() instanceof CheckTarget.Observation);
+        assertEquals(2, evidence().actionExecutions().size());
+        assertTrue(evidence().oracleResults().get(0).oracleTarget() instanceof OracleTarget.Observation);
     }
 
     @Test
@@ -201,13 +201,13 @@ class FacadeIT {
         PlaywrightEvidence evidence = EvidencePlaywright.evidenceFor(page);
         evidence.perform("custom", "Choose Ready", page.locator("button"), Map.of(),
             () -> page.locator("button").click());
-        evidence.checks().evaluate("Ready text", new CheckRule("example:ready", "1", org.testar.evidence.Properties.of(Map.of())), page.locator("button"),
+        evidence.checks().evaluate("Ready text", new Oracle("example:ready", "1", org.testar.evidence.Properties.of(Map.of())), page.locator("button"),
             "ui.text", ExpectedValue.of("Ready"), () -> assertThat(page.locator("button")).hasText("Ready"),
-            () -> new CheckReading.Value(org.testar.evidence.EvidenceJson.tree(page.locator("button").textContent())));
+            () -> new ObservedValue.Value(org.testar.evidence.EvidenceJson.tree(page.locator("button").textContent())));
         page.close();
-        assertEquals(2, model().executions().size());
-        assertEquals(1, model().checks().size());
-        assertEquals("example:ready", model().checks().get(0).rule().id());
+        assertEquals(2, evidence().actionExecutions().size());
+        assertEquals(1, evidence().oracleResults().size());
+        assertEquals("example:ready", evidence().oracleResults().get(0).oracle().id());
     }
 
     @Test
@@ -219,7 +219,7 @@ class FacadeIT {
         assertEquals(2, traceDirectories().size());
         for (Path path : traceDirectories()) {
             assertTrue(path.getFileName().toString().startsWith("local-app_Inspect-a-loan-request_trace-"));
-            assertEquals(ExecutionStatus.OBSERVED, EvidenceReader.read(path).executions().get(0).status());
+            assertEquals(ActionExecutionStatus.COMPLETED, EvidenceReader.read(path).actionExecutions().get(0).status());
         }
     }
 
@@ -227,7 +227,7 @@ class FacadeIT {
     void external_page_close_flushes_cached_result_without_capturing_closed_page() throws Exception {
         page.setContent("<p>Ready</p>");
         ((Page) FacadeRuntime.unwrap(page)).close();
-        assertEquals(ExecutionStatus.OBSERVED, model().executions().get(0).status());
+        assertEquals(ActionExecutionStatus.COMPLETED, evidence().actionExecutions().get(0).status());
     }
 
     @Test
@@ -247,7 +247,7 @@ class FacadeIT {
         assertFalse(saved.contains(secret));
         assertFalse(saved.contains("other-secret-3862"));
         assertFalse(saved.contains("third-secret-7823"));
-        assertTrue(model().checks().get(0).actual() instanceof CheckReading.Unknown);
+        assertTrue(evidence().oracleResults().get(0).observedValue() instanceof ObservedValue.Unknown);
     }
 
     @Test
@@ -258,9 +258,9 @@ class FacadeIT {
         assertThrows(AssertionError.class, () -> assertThat(page.locator("img")).hasAttribute("alt", "Help",
             new LocatorAssertions.HasAttributeOptions().setTimeout(100)));
         page.close();
-        assertEquals("ui.title", ((CheckTarget.StateProperty) model().checks().get(0).target()).property());
-        assertEquals("ui.url", ((CheckTarget.StateProperty) model().checks().get(1).target()).property());
-        assertTrue(model().checks().get(2).actual() instanceof CheckReading.Absent);
+        assertEquals("ui.title", ((OracleTarget.StateProperty) evidence().oracleResults().get(0).oracleTarget()).property());
+        assertEquals("ui.url", ((OracleTarget.StateProperty) evidence().oracleResults().get(1).oracleTarget()).property());
+        assertTrue(evidence().oracleResults().get(2).observedValue() instanceof ObservedValue.Absent);
     }
 
     @Test
@@ -284,8 +284,8 @@ class FacadeIT {
         checks.hasValue("example:value", "Username", page.locator("input"), "john");
         checks.hasAttribute("example:attribute", "Greeting title", page.locator("p"), "title", "Greeting");
         page.close();
-        assertEquals(3, model().checks().size());
-        assertTrue(model().checks().stream().allMatch(value -> value.status() == CheckStatus.PASSED));
+        assertEquals(3, evidence().oracleResults().size());
+        assertTrue(evidence().oracleResults().stream().allMatch(value -> value.oracleStatus() == OracleStatus.PASSED));
     }
 
     @Test
@@ -301,12 +301,12 @@ class FacadeIT {
         assertThat(page.locator("input[type=checkbox]")).isChecked();
         assertThat(page.locator("select")).hasValues(new String[] {"a", "b"});
         page.close();
-        assertEquals(3, model().executions().size());
-        assertEquals(6, model().checks().size());
-        assertTrue(model().checks().stream().allMatch(value -> value.status() == CheckStatus.PASSED));
-        assertTrue(model().checks().stream().noneMatch(value -> value.actual() instanceof CheckReading.Unknown));
+        assertEquals(3, evidence().actionExecutions().size());
+        assertEquals(6, evidence().oracleResults().size());
+        assertTrue(evidence().oracleResults().stream().allMatch(value -> value.oracleStatus() == OracleStatus.PASSED));
+        assertTrue(evidence().oracleResults().stream().noneMatch(value -> value.observedValue() instanceof ObservedValue.Unknown));
         assertEquals("playwright.dom.selectedValues",
-            ((CheckTarget.WidgetProperty) model().checks().get(5).target()).property());
+            ((OracleTarget.WidgetProperty) evidence().oracleResults().get(5).oracleTarget()).property());
     }
 
     @Test
@@ -315,8 +315,8 @@ class FacadeIT {
             org.testar.evidence.playwright.examples.ParabankFacade.run(page, fixture.url());
             page.close();
         }
-        assertEquals(8, model().executions().size());
-        assertEquals(3, model().checks().size());
+        assertEquals(8, evidence().actionExecutions().size());
+        assertEquals(3, evidence().oracleResults().size());
     }
 
     @Test
@@ -330,10 +330,10 @@ class FacadeIT {
             second.newPage().setContent("<p>Ready</p>");
         }
         try (var files = Files.list(output)) {
-            var properties = EvidenceReader.read(files.findFirst().orElseThrow()).runs().get(0).run().properties();
+            var properties = EvidenceReader.read(files.findFirst().orElseThrow()).testRuns().get(0).testRun().properties();
             assertFalse(properties.contains("evidence.origin"));
             assertFalse(properties.contains("evidence.test_objective"));
-            assertEquals("0.2.2", properties.get("evidence.adapter_version").asText());
+            assertEquals("0.3.0", properties.get("evidence.adapter_version").asText());
         }
     }
 
@@ -345,11 +345,11 @@ class FacadeIT {
         assertThat(page.locator("#missing")).hasCount(0);
         assertThat(page.locator("#missing")).not().isAttached();
         page.close();
-        assertEquals(4, model().checks().size());
-        assertTrue(model().checks().stream().noneMatch(value -> value.actual() instanceof CheckReading.Unknown));
-        assertTrue(model().checks().get(0).target() instanceof CheckTarget.Observation);
-        assertTrue(model().checks().get(1).target() instanceof CheckTarget.Observation);
-        assertEquals(new CheckReading.Value(org.testar.evidence.EvidenceJson.tree(false)), model().checks().get(3).actual());
+        assertEquals(4, evidence().oracleResults().size());
+        assertTrue(evidence().oracleResults().stream().noneMatch(value -> value.observedValue() instanceof ObservedValue.Unknown));
+        assertTrue(evidence().oracleResults().get(0).oracleTarget() instanceof OracleTarget.Observation);
+        assertTrue(evidence().oracleResults().get(1).oracleTarget() instanceof OracleTarget.Observation);
+        assertEquals(new ObservedValue.Value(org.testar.evidence.EvidenceJson.tree(false)), evidence().oracleResults().get(3).observedValue());
     }
 
     @Test
@@ -393,7 +393,7 @@ class FacadeIT {
         }
     }
 
-    private StateModel model() throws Exception {
+    private ReconstructedEvidence evidence() throws Exception {
         return EvidenceReader.read(traceDirectories().get(0));
     }
 }

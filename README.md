@@ -6,7 +6,7 @@ A Java library that records Playwright actions and assertion results in the shar
 Java test script -> Playwright Java adapter -> testar-evidence-java -> portable evidence
 ```
 
-The adapter imports `org.testar:testar-evidence:0.2.2` through Maven. Its public API is in `org.testar.evidence.playwright`. Release `0.2.2` belongs to the shared `0.2` release series.
+The adapter imports `org.testar:testar-evidence:0.3.0` through Maven. Its public API is in `org.testar.evidence.playwright`. Release `0.3.0` belongs to the shared `0.3` release series.
 
 ## Build and test
 
@@ -54,7 +54,7 @@ try (Playwright playwright = EvidencePlaywright.create();
 }
 ```
 
-Each used page gets its own timestamped trace under `target/traces`. Closing the page, context, browser, or Playwright finishes its trace. Native Playwright performs the operations and assertion retries; the facade records their final results. Password input arguments and automatic password-check values are redacted.
+Each used page gets its own run, sequence, and timestamped trace under `target/traces`. Closing the page, context, browser, or Playwright finishes its trace. Native Playwright performs the operations and assertion retries; the facade records their final results. Password input arguments and automatic password-check values are redacted.
 
 To choose a location, SUT label, and optional run descriptions:
 
@@ -88,7 +88,7 @@ The facade example runs headlessly. Add `"-Dplaywright.headed=true"` to show the
 mvn test-compile exec:java "-Dexec.mainClass=org.testar.evidence.playwright.examples.ParabankFacade" "-Dexec.classpathScope=test" "-Dexec.args=https://para.testar.org/parabank/index.htm target/my-loan-evidence"
 ```
 
-The facade creates a new child directory such as `target/traces/parabank_denied-loan_trace-2026-10-22_15-30-12-123/`. The timestamp uses local time and includes milliseconds; a collision adds a numeric suffix. The printed parent directory contains these traces. Load an individual trace directory, including its `manifest.json`, `evidence.jsonl`, and PNG files in `artifacts/`, in the dashboard.
+The facade creates a new child directory such as `target/traces/parabank_denied-loan_trace-2026-10-22_15-30-12-123/`. The timestamp uses local time and includes milliseconds; a collision adds a numeric suffix. The printed parent directory contains these traces. Load an individual trace directory, including its `manifest.json`, `evidence.jsonl`, and PNG files in `artifacts/`, in a consumer supporting schema 3.
 
 A successful loan scenario records navigation, seven form/link actions, and three final text evaluations. The expected loan denial produces a passed evaluation. The local browser tests provide repeatable application data for the same script.
 
@@ -100,7 +100,7 @@ Install this adapter with `mvn install`, then declare:
 <dependency>
     <groupId>org.testar</groupId>
     <artifactId>testar-evidence-playwright-java-adapter</artifactId>
-    <version>0.2.2</version>
+    <version>0.3.0</version>
 </dependency>
 ```
 
@@ -121,3 +121,9 @@ try (PlaywrightEvidence evidence = PlaywrightEvidence.start(output, page)) {
 With this explicit API, actions and assertions are recorded through the helpers. `perform` wraps custom actions and their parameters; `checks().evaluate` wraps custom assertions, readings, and targets. Password input values are omitted during capture, and `fillSecret` omits the supplied value from execution parameters.
 
 See [How it works](docs/how-it-works.md) for the components, recording flow, and script integration; [SPEC](docs/SPEC.md) for recording behavior; and [TODO](TODO.md) for planned work.
+
+## Report additional evidence
+
+`EvidencePlaywright.evidenceFor(page)` exposes the same recorder used by automatic recording. Report choices with `AvailableAction` and `recordAvailableActions`, then pass the chosen action to `perform` or `selectAction`. Its unexecuted alternatives remain in the observation.
+
+`selectAction` and `reportActionResult` support native execution managed by the caller. `checks().recordResult` records an oracle result the caller already obtained, including optional precise targets, observed values, oracle details, and severity. See [SPEC](docs/SPEC.md#java-api) and [How it works](docs/how-it-works.md).
