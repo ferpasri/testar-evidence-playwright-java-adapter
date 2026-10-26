@@ -71,13 +71,13 @@ class RecordingApiTest {
 
     @Test
     void available_actions_preserve_unexecuted_choices_and_link_the_selected_description() throws Exception {
-        AvailableAction first = new AvailableAction("custom", "Choose option", null, Map.of("strategy", "first"));
+        AvailableAction first = new AvailableAction("custom", "Choose option", null, Map.of("strategy", "first", "input", Map.of("value", "planned")));
         AvailableAction second = new AvailableAction("custom", "Choose option", null, Map.of("strategy", "second"));
         AtomicInteger operations = new AtomicInteger();
         String source;
         try (PlaywrightEvidence recorder = start()) {
             source = recorder.recordAvailableActions(List.of(first, second), AvailableActionScope.ELIGIBLE);
-            recorder.perform(first.actionType(), first.name(), null, Map.of("generated_input", 42), () -> {
+            recorder.perform(first.actionType(), first.name(), null, Map.of("generated_input", 42, "input", Map.of("value", "actual")), () -> {
                 operations.incrementAndGet();
                 operations.incrementAndGet();
             }, first);
@@ -92,6 +92,9 @@ class RecordingApiTest {
         assertEquals(first.description().id(), execution.actionExecution().actionDescription());
         assertEquals(source, execution.actionExecution().sourceObservation());
         assertEquals(42, execution.actionExecution().parameters().get("generated_input").asInt());
+        var description = evidence.actionDescription(execution.actionExecution().actionDescription()).orElseThrow();
+        assertEquals("planned", description.properties().get("playwright.available_parameters").get("input").get("value").asText());
+        assertEquals("actual", execution.actionExecution().parameters().get("input").get("value").asText());
         assertFalse(execution.actionExecution().parameters().contains("strategy"));
         assertEquals(ActionExecutionStatus.COMPLETED, execution.status());
         assertEquals(1, evidence.recordedTransitions().size());

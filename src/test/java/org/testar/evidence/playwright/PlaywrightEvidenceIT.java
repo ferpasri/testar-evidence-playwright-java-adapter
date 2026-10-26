@@ -371,11 +371,41 @@ class PlaywrightEvidenceIT {
         }
         var evidence = EvidenceReader.read(directory);
         assertEquals(2, evidence.availableActions(source).size());
+        var execution = evidence.actionExecutions().get(0).actionExecution();
+        assertEquals(source, execution.sourceObservation());
+        assertEquals(fill.description().id(), execution.actionDescription());
+        assertEquals(widget(evidence.observation(source).orElseThrow(), "name").id(), execution.targetWidget());
         assertEquals(1, evidence.actionExecutions().size());
         assertEquals(1, evidence.recordedTransitions().size());
         assertEquals("john", evidence.actionExecutions().get(0).actionExecution().parameters().get("value").asText());
         assertTrue(evidence.oracleResults().get(0).oracleTarget() instanceof OracleTarget.WidgetProperty);
         assertEquals("informational", evidence.oracleResults().get(0).oracleSeverity().label());
+    }
+
+    @Test
+    void hidden_parent_styles_and_text_are_preserved_without_inferred_visibility() {
+        page.setContent("<section id='panel' style='display: none'>"
+            + "<span id='status' style='visibility: visible'>Waiting</span></section>");
+        BrowserSnapshot before = DomCapture.capture(page, CaptureOptions.defaults());
+        Widget panel = before.widgetAt(DomCapture.targetPath(page.locator("#panel")));
+        Widget status = before.widgetAt(DomCapture.targetPath(page.locator("#status")));
+        assertEquals(panel.id(), status.parent());
+        assertEquals("none", panel.properties().get("playwright.style.display").asText());
+        assertEquals("visible", status.properties().get("playwright.style.visibility").asText());
+        assertEquals("Waiting", status.properties().get("ui.text").asText());
+        assertFalse(page.locator("#status").isVisible());
+        assertFalse(status.properties().contains("ui.visible"));
+        assertFalse(status.properties().contains("playwright.dom.visible"));
+
+        page.locator("#panel").evaluate("element => element.style.display = 'block'");
+        page.locator("#status").evaluate("element => element.textContent = 'Complete'");
+        BrowserSnapshot after = DomCapture.capture(page, CaptureOptions.defaults());
+        assertEquals("block", after.widgetAt(DomCapture.targetPath(page.locator("#panel")))
+            .properties().get("playwright.style.display").asText());
+        Widget resultingStatus = after.widgetAt(DomCapture.targetPath(page.locator("#status")));
+        assertEquals("visible", resultingStatus.properties().get("playwright.style.visibility").asText());
+        assertEquals("Complete", resultingStatus.properties().get("ui.text").asText());
+        assertTrue(page.locator("#status").isVisible());
     }
 
     private static Widget widget(Observation observation, String id) {

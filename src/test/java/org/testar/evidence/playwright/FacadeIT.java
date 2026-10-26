@@ -2,7 +2,6 @@ package org.testar.evidence.playwright;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -68,17 +67,7 @@ class FacadeIT {
     @Test
     void ordinary_script_records_navigation_actions_and_final_assertion_outcomes() throws Exception {
         try (LoanFixture fixture = new LoanFixture()) {
-            assertNotNull(page.navigate(fixture.url()));
-            page.locator("input[name=username]").fill("john");
-            page.locator("input[name=password]").fill("demo");
-            page.locator("input[value='Log In']").click();
-            assertThat(page.locator("h2")).hasText("Account Services");
-            page.getByText("Request Loan").click();
-            assertThat(page.locator("h1")).hasText("Apply for a Loan");
-            page.locator("#amount").fill("999999");
-            page.locator("#downPayment").fill("1");
-            page.locator("input[value='Apply Now']").click();
-            assertThat(page.locator("#loanStatus")).hasText("Denied");
+            org.testar.evidence.playwright.examples.ParabankFacade.run(page, fixture.url());
             page.close();
         }
         ReconstructedEvidence evidence = evidence();
@@ -307,16 +296,6 @@ class FacadeIT {
         assertTrue(evidence().oracleResults().stream().noneMatch(value -> value.observedValue() instanceof ObservedValue.Unknown));
         assertEquals("playwright.dom.selectedValues",
             ((OracleTarget.WidgetProperty) evidence().oracleResults().get(5).oracleTarget()).property());
-    }
-
-    @Test
-    void facade_example_uses_the_same_recording_path() throws Exception {
-        try (LoanFixture fixture = new LoanFixture()) {
-            org.testar.evidence.playwright.examples.ParabankFacade.run(page, fixture.url());
-            page.close();
-        }
-        assertEquals(8, evidence().actionExecutions().size());
-        assertEquals(3, evidence().oracleResults().size());
     }
 
     @Test

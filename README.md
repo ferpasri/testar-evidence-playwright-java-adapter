@@ -6,7 +6,7 @@ A Java library that records Playwright actions and assertion results in the shar
 Java test script -> Playwright Java adapter -> testar-evidence-java -> portable evidence
 ```
 
-The adapter imports `org.testar:testar-evidence:0.3.0` through Maven. Its public API is in `org.testar.evidence.playwright`. Release `0.3.0` belongs to the shared `0.3` release series.
+The adapter imports `org.testar:testar-evidence` through Maven. Its public API is in `org.testar.evidence.playwright`. Package and dependency versions are declared in [pom.xml](pom.xml); the evidence library supplies the schema version.
 
 ## Build and test
 
@@ -68,29 +68,9 @@ These types belong to `org.testar.evidence.playwright`; `Path` is `java.nio.file
 
 Use `EvidencePlaywright.evidenceFor(page)` for custom action boundaries or checks. Ordinary Java assertions and external oracle callbacks can be recorded through `checks().evaluate(...)`.
 
-## Loan-denial example
+## Examples
 
-[ParabankFacade.java](src/test/java/org/testar/evidence/playwright/examples/ParabankFacade.java) uses automatic recording and contains the example's `main` method. [ParabankDeniedLoan.java](src/test/java/org/testar/evidence/playwright/examples/ParabankDeniedLoan.java) shows explicit recording boundaries. It logs in as `john` / `demo`, checks Account Services, opens Request Loan, checks Apply for a Loan, enters amount `999999` and down payment `1`, submits, and checks Denied.
-
-```powershell
-mvn test-compile exec:java "-Dexec.mainClass=org.testar.evidence.playwright.examples.ParabankFacade" "-Dexec.classpathScope=test"
-```
-
-With installed Google Chrome:
-
-```powershell
-mvn test-compile exec:java "-Dexec.mainClass=org.testar.evidence.playwright.examples.ParabankFacade" "-Dexec.classpathScope=test" "-Dplaywright.channel=chrome"
-```
-
-The facade example runs headlessly. Add `"-Dplaywright.headed=true"` to show the browser. Its optional arguments are the starting URL and parent output directory:
-
-```powershell
-mvn test-compile exec:java "-Dexec.mainClass=org.testar.evidence.playwright.examples.ParabankFacade" "-Dexec.classpathScope=test" "-Dexec.args=https://para.testar.org/parabank/index.htm target/my-loan-evidence"
-```
-
-The facade creates a new child directory such as `target/traces/parabank_denied-loan_trace-2026-10-22_15-30-12-123/`. The timestamp uses local time and includes milliseconds; a collision adds a numeric suffix. The printed parent directory contains these traces. Load an individual trace directory, including its `manifest.json`, `evidence.jsonl`, and PNG files in `artifacts/`, in a consumer supporting schema 3.
-
-A successful loan scenario records navigation, seven form/link actions, and three final text evaluations. The expected loan denial produces a passed evaluation. The local browser tests provide repeatable application data for the same script.
+The [loan-denial examples](docs/examples.md) show automatic recording and explicit boundaries, with commands for running them.
 
 ## Use the library
 
@@ -100,9 +80,11 @@ Install this adapter with `mvn install`, then declare:
 <dependency>
     <groupId>org.testar</groupId>
     <artifactId>testar-evidence-playwright-java-adapter</artifactId>
-    <version>0.3.0</version>
+    <version>YOUR_ADAPTER_VERSION</version>
 </dependency>
 ```
+
+Replace `YOUR_ADAPTER_VERSION` with the version in this adapter's `pom.xml`.
 
 For explicit integration with an existing native page, the test can supply each recording boundary:
 
