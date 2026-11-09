@@ -32,13 +32,14 @@ import org.testar.evidence.OracleStatus;
 import org.testar.evidence.OracleTarget;
 import org.testar.evidence.Properties;
 import org.testar.evidence.RecordedState;
+import org.testar.evidence.ReconstructedEvidence;
 import org.testar.evidence.TestRun;
 import org.testar.evidence.TestSequence;
 import org.testar.evidence.Widget;
 
 /** Records actions and oracle results for one page. The caller owns the native page. */
 public final class PlaywrightEvidence implements AutoCloseable {
-    public static final String VERSION = "0.3.0";
+    public static final String VERSION = "0.3.1";
     public static final String ADAPTER_ID = "testar-evidence-playwright-java-adapter";
 
     private final Page page;
@@ -73,6 +74,91 @@ public final class PlaywrightEvidence implements AutoCloseable {
         this.runId = runId;
         this.sequenceId = runId + ":sequence:1";
         this.checks = new PlaywrightChecks(this);
+    }
+
+    /** Start a uniquely named trace; the caller retains ownership of the page and browser. */
+    public static PlaywrightEvidence startTrace(Page page, EvidenceOptions options) throws IOException {
+        Objects.requireNonNull(options, "options");
+        return start(TraceDirectories.reserve(options), page, options.capture(), options.origin(), options.testObjective());
+    }
+
+    /** Whether this recorder belongs to the supplied native or facade page. */
+    public boolean isFor(Page page) {
+        return this.page == FacadeRuntime.unwrap(page);
+    }
+
+    /** Snapshot committed evidence without taking another browser capture or reading files. */
+    public ReconstructedEvidence recordedEvidence() {
+        if (Thread.currentThread() != owner) {
+            throw new IllegalStateException("Read evidence on its Playwright thread");
+        }
+        return store.evidence();
+    }
+
+    /** Save the buffered capture and any pending transition without capturing the browser again. */
+    public String commitCapture() throws IOException {
+        requireActive();
+        requireNoUnreportedExecution();
+        if (pending == null) {
+            throw new IllegalStateException("Capture an observation before committing it");
+        }
+        String[] result = new String[1];
+        inScope(() -> result[0] = flush(null, null));
+        return result[0];
+    }
+
+    /** Select an action bound to the latest committed observation, without recapturing its source state. */
+    public String selectRecordedAction(AvailableAction action, String observation, Map<String, ?> parameters) throws IOException {
+        requireActive();
+        requireNoUnreportedExecution();
+        Objects.requireNonNull(action, "action");
+        if (pending != null || observation == null || !observation.equals(lastObservation)) {
+            throw new IllegalArgumentException("Use the latest committed observation with no buffered capture");
+        }
+        ActionDescription description = action.description();
+        var matches = store.evidence().availableActions(observation).stream()
+            .filter(binding -> binding.actionDescription().equals(description.id())).toList();
+        if (matches.size() != 1) {
+            throw new IllegalArgumentException("Action must have one available binding in the recorded observation");
+        }
+        Properties supplied = Properties.of(parameters);
+        Map<String, Object> actual = new LinkedHashMap<>();
+        supplied.asJson().properties().forEach(entry -> actual.put(entry.getKey(), entry.getValue()));
+        List<String> redacted = new ArrayList<>();
+        if (supplied.contains("playwright.redacted_parameters")) {
+            supplied.get("playwright.redacted_parameters").forEach(value -> redacted.add(value.asText()));
+        }
+        Locator locator = (Locator) FacadeRuntime.unwrap(action.locator());
+        inScope(() -> {
+            boolean hasInput = List.of("value", "text", "key", "playwright.positional_arguments", "playwright.keyword_arguments")
+                .stream().anyMatch(actual::containsKey);
+            if (hasInput && (locator == null || FacadeActions.sensitive(locator))) {
+                for (String key : List.of("value", "text", "key", "playwright.positional_arguments", "playwright.keyword_arguments")) {
+                    if (actual.remove(key) != null && !redacted.contains(key)) {
+                        redacted.add(key);
+                    }
+                }
+            }
+        });
+        if (!redacted.isEmpty()) {
+            actual.put("playwright.redacted_parameters", List.copyOf(redacted));
+        }
+        String execution = sequenceId + ":execution:" + (++executions);
+        emit(new Event.ActionSelected(new ActionExecution(execution, sequenceId, observation, description.id(),
+            matches.get(0).targetWidget(), Properties.of(actual))));
+        selectedExecution = execution;
+        selectedErrorRedacted = !redacted.isEmpty();
+        return execution;
+    }
+
+    /** Execute the already selected action while suppressing nested facade records. */
+    public void executeSelected(Runnable operation) throws IOException {
+        requireActive();
+        if (selectedExecution == null) {
+            throw new IllegalStateException("Select an action before executing it");
+        }
+        Objects.requireNonNull(operation, "operation");
+        inScope(() -> executeSelectedInternal(operation, false));
     }
 
     public static PlaywrightEvidence start(Path directory, Page page) throws IOException {
@@ -166,21 +252,33 @@ public final class PlaywrightEvidence implements AutoCloseable {
 
     /** Record the choices reported by a caller, including an explicitly empty list. */
     public String recordAvailableActions(List<AvailableAction> actions, AvailableActionScope scope) throws IOException {
+        return recordAvailableActions(actions, scope, null, null);
+    }
+
+    /** Attach choices to this buffered observation. Null paths request native locator resolution. */
+    public String recordAvailableActions(List<AvailableAction> actions, AvailableActionScope scope,
+                                         String observation, List<String> targetPaths) throws IOException {
         requireActive();
         requireNoUnreportedExecution();
         Objects.requireNonNull(actions, "actions");
         Objects.requireNonNull(scope, "scope");
+        if (observation != null && (pending == null || !observation.equals(pending.id))) {
+            throw new IllegalArgumentException("Observation must be the current buffered capture");
+        }
+        if (targetPaths != null && targetPaths.size() != actions.size()) {
+            throw new IllegalArgumentException("Supply one target path per available action");
+        }
         List<ActionDescription> supplied = actions.stream().map(AvailableAction::description).toList();
-        final String[] observation = new String[1];
+        final String[] result = new String[1];
         inScope(() -> {
-            if (pending != null) {
+            if (observation == null && pending != null) {
                 flush(null, null);
             }
             ensurePending();
             List<org.testar.evidence.AvailableAction> bindings = new ArrayList<>();
             for (int index = 0; index < actions.size(); index++) {
                 Locator locator = (Locator) FacadeRuntime.unwrap(actions.get(index).locator());
-                Widget widget = pending.snapshot.widgetAt(DomCapture.targetPath(locator));
+                Widget widget = pending.snapshot.widgetAt(targetPaths == null ? DomCapture.targetPath(locator) : targetPaths.get(index));
                 org.testar.evidence.AvailableAction binding = new org.testar.evidence.AvailableAction(
                     supplied.get(index).id(), widget == null ? null : widget.id());
                 if (!bindings.contains(binding)) {
@@ -192,9 +290,9 @@ public final class PlaywrightEvidence implements AutoCloseable {
             }
             pending.availableActions = List.copyOf(bindings);
             pending.availableActionScope = scope;
-            observation[0] = pending.id;
+            result[0] = pending.id;
         });
-        return observation[0];
+        return result[0];
     }
 
     public String selectAction(String actionType, String name, Locator locator, Map<String, ?> parameters) throws IOException {
@@ -309,6 +407,10 @@ public final class PlaywrightEvidence implements AutoCloseable {
                                  Runnable operation, AvailableAction availableAction, boolean redactError) throws IOException {
         Objects.requireNonNull(operation, "operation");
         selectAction(actionType, name, locator, parameters, availableAction);
+        executeSelectedInternal(operation, redactError);
+    }
+
+    private void executeSelectedInternal(Runnable operation, boolean redactError) throws IOException {
         busy = true;
         try {
             try {

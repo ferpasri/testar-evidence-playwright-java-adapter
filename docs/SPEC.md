@@ -101,3 +101,11 @@ A trace contains `manifest.json`, `evidence.jsonl`, and referenced screenshot fi
 Closing a page, context, browser, or facade session finishes the corresponding recorder. An unavailable page is finished from its cached captures, without inventing a result observation. Successfully saved prefixes remain readable after later failures.
 
 Unit and controlled local browser tests cover native delegation, final assertion outcomes, optional metadata, available actions, compound actions, execution errors, precise oracle targets, severity, password redaction, capture limits, callbacks, and reopening the produced traces. Abstraction remains separate from these recorded traces.
+
+## Observation coordination
+
+An integration can call `capture()`, attach available actions to that observation through `recordAvailableActions`, and call `commitCapture()` to save it without another capture. The overload accepts the buffered observation ID and optional target paths in action order. Supplied paths identify widgets in that capture; omitting the path list requests normal locator resolution. An unknown buffered observation is rejected.
+
+`selectRecordedAction(action, observation, parameters)` selects a binding from the latest committed observation. It rejects stale observations, buffered newer captures, and actions without one matching binding. `executeSelected(operation)` delegates the operation, records its outcome, and suppresses nested facade records. The caller captures and commits the resulting state. `recordedEvidence()` returns an independent snapshot of committed records.
+
+`startTrace(page, evidenceOptions)` reserves a timestamped trace folder using the same naming as the facade. `isFor(page)` checks recorder/page ownership. These APIs support integrations that coordinate their own observation cycle while the ordinary facade continues to capture automatically.

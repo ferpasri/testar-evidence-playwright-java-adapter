@@ -51,6 +51,35 @@ class RecordingApiTest {
     }
 
     @Test
+    void committed_actions_reuse_the_source_state_and_reject_stale_observations() throws Exception {
+        AvailableAction action = new AvailableAction("custom", "Choose option", null);
+        AtomicInteger operations = new AtomicInteger();
+        try (PlaywrightEvidence recorder = start()) {
+            String first = recorder.capture();
+            assertThrows(IllegalArgumentException.class, () ->
+                recorder.recordAvailableActions(List.of(action), AvailableActionScope.ELIGIBLE, "unknown", null));
+            recorder.recordAvailableActions(List.of(action), AvailableActionScope.ELIGIBLE, first, null);
+            assertEquals(first, recorder.commitCapture());
+            assertThrows(IllegalArgumentException.class, () -> recorder.selectRecordedAction(
+                new AvailableAction("custom", "Not reported", null), first, Map.of()));
+            recorder.selectRecordedAction(action, first, Map.of("input", 42));
+            recorder.executeSelected(operations::incrementAndGet);
+            String second = recorder.capture();
+            recorder.recordAvailableActions(List.of(), AvailableActionScope.ELIGIBLE, second, List.of());
+            recorder.commitCapture();
+            assertThrows(IllegalArgumentException.class, () -> recorder.selectRecordedAction(action, first, Map.of()));
+            assertThrows(IllegalStateException.class, recorder::commitCapture);
+            var trace = recorder.recordedEvidence();
+            assertEquals(2, trace.observations().size());
+            assertEquals(1, trace.actionExecutions().size());
+            assertEquals(first, trace.actionExecutions().get(0).actionExecution().sourceObservation());
+            assertEquals(1, trace.recordedTransitions().size());
+        }
+        assertEquals(1, operations.get());
+        assertEquals(2, EvidenceReader.read(directory).observations().size());
+    }
+
+    @Test
     void histories_start_and_finish_in_order_using_schema_three() throws Exception {
         try (PlaywrightEvidence recorder = start()) {
             recorder.observe();

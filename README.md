@@ -109,3 +109,5 @@ See [How it works](docs/how-it-works.md) for the components, recording flow, and
 `EvidencePlaywright.evidenceFor(page)` exposes the same recorder used by automatic recording. Report choices with `AvailableAction` and `recordAvailableActions`, then pass the chosen action to `perform` or `selectAction`. Its unexecuted alternatives remain in the observation.
 
 `selectAction` and `reportActionResult` support native execution managed by the caller. `checks().recordResult` records an oracle result the caller already obtained, including optional precise targets, observed values, oracle details, and severity. See [SPEC](docs/SPEC.md#java-api) and [How it works](docs/how-it-works.md).
+
+Integrations coordinating their own observation cycle can commit captures, select recorded available actions, and execute them without duplicate facade recording. See [observation coordination](docs/SPEC.md#observation-coordination).

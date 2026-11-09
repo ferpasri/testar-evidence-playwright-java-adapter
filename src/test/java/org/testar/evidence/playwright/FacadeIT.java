@@ -312,7 +312,7 @@ class FacadeIT {
             var properties = EvidenceReader.read(files.findFirst().orElseThrow()).testRuns().get(0).testRun().properties();
             assertFalse(properties.contains("evidence.origin"));
             assertFalse(properties.contains("evidence.test_objective"));
-            assertEquals("0.3.0", properties.get("evidence.adapter_version").asText());
+            assertEquals(PlaywrightEvidence.VERSION, properties.get("evidence.adapter_version").asText());
         }
     }
 
